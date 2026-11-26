@@ -99,8 +99,8 @@
 <script>
 /**
  * Our Places - 回忆地图相册
- * 边界数据源：jsDelivr CDN 镜像，境外（新加坡、香港）访问稳定
- * 无需本地GeoJSON文件，单文件index.html，支持GitHub Pages
+ * 边界数据源：jsDelivr 优先，raw.githubusercontent 兜底（双源）
+ * 单文件 index.html，无需本地 GeoJSON，可直接部署 GitHub Pages
  */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
@@ -127,9 +127,16 @@ const places = [
 ];
 
 const HOME = { center:[32.5,113.0], zoom:5 };
-// CDN镜像，适合GitHub Pages、新加坡网络访问
-const PROV_URL = "https://cdn.jsdelivr.net/gh/Supeset/China-GeoData/main/geojson/china_province_full.geojson";
-const CITY_URL = "https://cdn.jsdelivr.net/gh/Supeset/China-GeoData/main/geojson/china_province_city_full.geojson";
+
+/* 双源：jsDelivr 在前，raw 在后；逐个尝试 */
+const PROV_URLS = [
+  "https://fastly.jsdelivr.net/gh/Supeset/China-GeoData@main/geojson/china_province_full.geojson",
+  "https://raw.githubusercontent.com/Supeset/China-GeoData/main/geojson/china_province_full.geojson"
+];
+const CITY_URLS = [
+  "https://fastly.jsdelivr.net/gh/Supeset/China-GeoData@main/geojson/china_province_city_full.geojson",
+  "https://raw.githubusercontent.com/Supeset/China-GeoData/main/geojson/china_province_city_full.geojson"
+];
 
 const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
@@ -152,12 +159,23 @@ function provinceStyle(f){
   return { fillColor:c, fillOpacity:.9, color:'#d99aad', weight:1.2 };
 }
 
+/* 依次尝试多个镜像源，全部失败才抛错 */
+async function fetchGeo(urls){
+  let lastErr = null;
+  for(const u of urls){
+    try{
+      const r = await fetch(u);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return await r.json();
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr;
+}
+
 async function loadProvince(){
   try{
     loadingTip.innerText = '正在请求省界数据...';
-    const res = await fetch(PROV_URL);
-    if(!res.ok) throw new Error('省界接口返回异常');
-    const data = await res.json();
+    const data = await fetchGeo(PROV_URLS);
     const total = data.features.length;
     let loaded = 0;
     loadingTip.innerText = `省份加载：0 / ${total}`;
@@ -187,8 +205,7 @@ loadProvince();
 async function loadCities(){
   if(cityIndex) return cityIndex;
   if(cityLoading) return cityLoading;
-  cityLoading = fetch(CITY_URL)
-    .then(r=>{ if(!r.ok) throw new Error('城市边界缺失'); return r.json(); })
+  cityLoading = fetchGeo(CITY_URLS)
     .then(data=>{
       cityIndex = {};
       data.features.forEach(f=>{ cityIndex[String(f.properties.adcode)] = f; });
