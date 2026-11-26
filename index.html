@@ -67,9 +67,50 @@
 
   .gallery{flex:1;overflow-y:auto;padding:24px 32px 40px;column-count:2;column-gap:16px;}
   @media(max-width:480px){.gallery{column-count:1;}}
-  .gallery-item{break-inside:avoid;margin-bottom:16px;border-radius:8px;overflow:hidden;background:#fbeef0;animation:fadeUp .6s ease both;}
+
+  /* ===== 照片卡片：悬停弹动上浮 ===== */
+  .gallery-item{
+    break-inside:avoid;margin-bottom:16px;border-radius:8px;overflow:hidden;
+    background:#fbeef0;animation:fadeUp .6s ease both;
+    transition:transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .35s ease;
+  }
+  .gallery-item:hover{
+    transform:translateY(-5px) scale(1.03);
+    box-shadow:0 14px 30px rgba(150,70,90,.25);
+    z-index:2;position:relative;
+  }
   .gallery-item img{width:100%;display:block;}
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+
+  /* ===== 评论区：悬停卡片时从底部滑出 ===== */
+  .comment-wrap{
+    padding:10px 12px 12px;
+    max-height:0;overflow:hidden;
+    opacity:0;transform:translateY(8px);
+    transition:max-height .35s ease, opacity .3s ease, transform .3s ease;
+    background:#fff;
+  }
+  .gallery-item:hover .comment-wrap,
+  .comment-wrap:focus-within{
+    max-height:260px;opacity:1;transform:translateY(0);
+  }
+  .comment-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px;}
+  .comment-item{font-size:12.5px;line-height:1.6;color:var(--ink);}
+  .comment-item .time{color:var(--soft);font-size:11px;margin-left:6px;}
+  .comment-form{display:flex;gap:8px;}
+  .comment-form input{
+    flex:1;border:1px solid var(--line);border-radius:6px;
+    padding:7px 10px;font-size:12.5px;font-family:inherit;background:#fdf7f8;color:var(--ink);
+  }
+  .comment-form input:focus{outline:none;border-color:var(--accent);}
+  .comment-form button{
+    border:none;background:var(--accent);color:#fff;border-radius:6px;
+    padding:7px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;
+    transition:background .2s;
+  }
+  .comment-form button:hover{background:var(--accent-deep);}
+  .comment-count{font-size:11px;color:var(--soft);padding:6px 12px 0;}
+
   .gallery::-webkit-scrollbar{width:6px;}
   .gallery::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
 </style>
@@ -99,8 +140,7 @@
 <script>
 /**
  * Our Places - 回忆地图相册
- * 边界数据源：jsDelivr 优先，raw.githubusercontent 兜底（双源）
- * 单文件 index.html，无需本地 GeoJSON，可直接部署 GitHub Pages
+ * 地图主体锁定不变；本版新增：照片悬停弹动 + 本机评论（localStorage）
  */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
@@ -128,7 +168,6 @@ const places = [
 
 const HOME = { center:[32.5,113.0], zoom:5 };
 
-/* 双源：jsDelivr 在前，raw 在后；逐个尝试 */
 const PROV_URLS = [
   "https://fastly.jsdelivr.net/gh/Supeset/China-GeoData@main/geojson/china_province_full.geojson",
   "https://raw.githubusercontent.com/Supeset/China-GeoData/main/geojson/china_province_full.geojson"
@@ -142,6 +181,7 @@ const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
 
 const loadingTip = document.getElementById('loadingTip');
+let visitedLayer = null;
 let hoverLayer = null, highlightLayer = null;
 let cityIndex = null;
 let cityLoading = null;
@@ -153,13 +193,12 @@ function hashAdcode(code){
   for(const c of s) h=(h*31+c.charCodeAt(0))>>>0;
   return h;
 }
-
 function provinceStyle(f){
   const c = PINK[hashAdcode(f.properties.adcode) % PINK.length];
   return { fillColor:c, fillOpacity:.9, color:'#d99aad', weight:1.2 };
 }
+const visitedStyle = { fillColor:'#dd8fa3', fillOpacity:.72, color:'#c9768a', weight:1.2 };
 
-/* 依次尝试多个镜像源，全部失败才抛错 */
 async function fetchGeo(urls){
   let lastErr = null;
   for(const u of urls){
@@ -179,7 +218,6 @@ async function loadProvince(){
     const total = data.features.length;
     let loaded = 0;
     loadingTip.innerText = `省份加载：0 / ${total}`;
-
     L.geoJSON(data,{
       style:provinceStyle,
       onEachFeature:(f, layer)=>{
@@ -209,22 +247,24 @@ async function loadCities(){
     .then(data=>{
       cityIndex = {};
       data.features.forEach(f=>{ cityIndex[String(f.properties.adcode)] = f; });
+      markVisited();
       return cityIndex;
     })
-    .catch(e=>{
-      console.warn('城市边界加载失败，使用圆圈兜底', e);
-      cityIndex = null;
-      return null;
-    });
+    .catch(e=>{ console.warn('城市边界加载失败', e); cityIndex = null; return null; });
   return cityLoading;
 }
 loadCities();
 
+function markVisited(){
+  if(!cityIndex) return;
+  const features = places.map(p=>cityIndex[p.adcode]).filter(Boolean);
+  if(!features.length) return;
+  visitedLayer = L.geoJSON({ type:"FeatureCollection", features },{ style:visitedStyle }).addTo(map);
+}
+
 async function getCityFeature(adcode){
   await loadCities();
-  if(cityIndex && cityIndex[adcode]){
-    return { type:"FeatureCollection", features:[cityIndex[adcode]] };
-  }
+  if(cityIndex && cityIndex[adcode]) return { type:"FeatureCollection", features:[cityIndex[adcode]] };
   return null;
 }
 
@@ -240,11 +280,8 @@ async function previewPlace(i){
   const geo = await getCityFeature(p.adcode);
   if(token!==hoverToken) return;
   removeLayer(hoverLayer);
-  if(geo){
-    hoverLayer = L.geoJSON(geo,{style:hoverStyle}).addTo(map);
-  }else{
-    hoverLayer = L.circle([p.lat,p.lng],{radius:p.range,...hoverStyle,dashArray:'4 4'}).addTo(map);
-  }
+  if(geo) hoverLayer = L.geoJSON(geo,{style:hoverStyle}).addTo(map);
+  else hoverLayer = L.circle([p.lat,p.lng],{radius:p.range,...hoverStyle,dashArray:'4 4'}).addTo(map);
 }
 function clearPreview(){ hoverToken++; removeLayer(hoverLayer); }
 
@@ -252,18 +289,14 @@ async function highlightPlace(i){
   const p = places[i];
   removeLayer(highlightLayer);
   const geo = await getCityFeature(p.adcode);
-  if(geo){
-    highlightLayer = L.geoJSON(geo,{style:activeStyle}).addTo(map);
-  }else{
-    highlightLayer = L.circle([p.lat,p.lng],{
-      radius:p.range, color:'#8a3f55', weight:2.5,
-      fillColor:'#f6c6cf', fillOpacity:.45, dashArray:'4 4'
-    }).addTo(map);
-  }
+  if(geo) highlightLayer = L.geoJSON(geo,{style:activeStyle}).addTo(map);
+  else highlightLayer = L.circle([p.lat,p.lng],{
+    radius:p.range, color:'#8a3f55', weight:2.5,
+    fillColor:'#f6c6cf', fillOpacity:.45, dashArray:'4 4'
+  }).addTo(map);
 }
 
 const pinIcon = L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[24,24],iconAnchor:[12,12]});
-
 places.forEach((p,i)=>{
   const marker = L.marker([p.lat,p.lng],{icon:pinIcon}).addTo(map);
   marker.bindTooltip(p.name,{direction:'top',offset:[0,-12]});
@@ -278,7 +311,75 @@ places.forEach((p,i)=>{
   marker.on('click',()=>openPlace(i));
 });
 
+/* ================= 评论（本机 localStorage） ================= */
+const COMMENT_KEY = "album_comments";
+function loadComments(){
+  try{ return JSON.parse(localStorage.getItem(COMMENT_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function saveComment(key, text){
+  const all = loadComments();
+  if(!all[key]) all[key] = [];
+  all[key].push({ text, time:new Date().toLocaleString("zh-CN") });
+  localStorage.setItem(COMMENT_KEY, JSON.stringify(all));
+}
+function fmtTime(t){ return t; }
+
 const gallery = document.getElementById('gallery');
+
+function renderComments(key, listEl, countEl){
+  const all = loadComments();
+  const list = all[key] || [];
+  listEl.innerHTML = list.length
+    ? list.map(c=>`<div class="comment-item">${escapeHtml(c.text)}<span class="time">${fmtTime(c.time)}</span></div>`).join("")
+    : "";
+  countEl.textContent = list.length ? `💬 ${list.length} 条评论` : "";
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+
+function buildCard(src, placeName, idx){
+  const key = `${placeName}#${idx}`;
+  const item = document.createElement('div');
+  item.className = 'gallery-item';
+
+  const img = document.createElement('img');
+  img.src = src; img.alt = placeName;
+  img.onerror = ()=>{ item.style.display='none'; };
+
+  const count = document.createElement('div');
+  count.className = 'comment-count';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'comment-wrap';
+  const listEl = document.createElement('div');
+  listEl.className = 'comment-list';
+  const form = document.createElement('form');
+  form.className = 'comment-form';
+  const input = document.createElement('input');
+  input.placeholder = '写下这条回忆…';
+  const btn = document.createElement('button');
+  btn.type = 'submit'; btn.textContent = '发送';
+  form.appendChild(input); form.appendChild(btn);
+  wrap.appendChild(listEl); wrap.appendChild(form);
+
+  form.addEventListener('submit', e=>{
+    e.preventDefault();
+    const text = input.value.trim();
+    if(!text) return;
+    saveComment(key, text);
+    input.value = '';
+    renderComments(key, listEl, count);
+  });
+
+  item.appendChild(img);
+  item.appendChild(count);
+  item.appendChild(wrap);
+  renderComments(key, listEl, count);
+  return item;
+}
 
 async function openPlace(i){
   const p = places[i];
@@ -295,14 +396,9 @@ async function openPlace(i){
 
   gallery.innerHTML = "";
   p.photos.forEach((src,idx)=>{
-    const item = document.createElement('div');
-    item.className = 'gallery-item';
-    item.style.animationDelay = (idx*0.08)+'s';
-    const img = document.createElement('img');
-    img.src = src; img.alt = p.name;
-    img.onerror = ()=>{item.style.display='none';};
-    item.appendChild(img);
-    gallery.appendChild(item);
+    const card = buildCard(src, p.name, idx);
+    card.style.animationDelay = (idx*0.08)+'s';
+    gallery.appendChild(card);
   });
   gallery.scrollTop = 0;
 }
