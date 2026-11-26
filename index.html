@@ -97,10 +97,11 @@
 
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ============================================================
-   地点数据：边界由在线公开接口实时拉取，无需上传附属文件
-   adcode 对应城市；range 为接口失败时的兜底圆圈半径（米）
-   ============================================================ */
+/**
+ * Our Places - 回忆地图相册
+ * 边界数据源：jsDelivr CDN 镜像，境外（新加坡、香港）访问稳定
+ * 无需本地GeoJSON文件，单文件index.html，支持GitHub Pages
+ */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
     desc:"五月在安徽合肥的一段回忆。",
@@ -126,30 +127,35 @@ const places = [
 ];
 
 const HOME = { center:[32.5,113.0], zoom:5 };
-const GEO = "https://geo.datav.aliyun.com/areas_v3/bound";
+// CDN镜像，适合GitHub Pages、新加坡网络访问
+const PROV_URL = "https://cdn.jsdelivr.net/gh/Supeset/China-GeoData/main/geojson/china_province_full.geojson";
+const CITY_URL = "https://cdn.jsdelivr.net/gh/Supeset/China-GeoData/main/geojson/china_province_city_full.geojson";
 
 const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
 
 const loadingTip = document.getElementById('loadingTip');
 let hoverLayer = null, highlightLayer = null;
-const geoCache = {};
+let cityIndex = null;
+let cityLoading = null;
 let current = -1, hoverToken = 0;
 
-/* 分省粉色阶（浅 → 深），按 adcode 哈希错开填色 */
 const PINK = ['#f7d9df','#f3c8d1','#eeb6c2','#e9a5b4'];
-function hashAdcode(code){ let s=String(code); let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h; }
+function hashAdcode(code){
+  let s=String(code); let h=0;
+  for(const c of s) h=(h*31+c.charCodeAt(0))>>>0;
+  return h;
+}
 
 function provinceStyle(f){
   const c = PINK[hashAdcode(f.properties.adcode) % PINK.length];
   return { fillColor:c, fillOpacity:.9, color:'#d99aad', weight:1.2 };
 }
 
-/* ---------- 在线分省矢量底图（full = 35 个省级面） ---------- */
 async function loadProvince(){
   try{
     loadingTip.innerText = '正在请求省界数据...';
-    const res = await fetch(`${GEO}/100000_full.json`);
+    const res = await fetch(PROV_URL);
     if(!res.ok) throw new Error('省界接口返回异常');
     const data = await res.json();
     const total = data.features.length;
@@ -178,14 +184,31 @@ async function loadProvince(){
 }
 loadProvince();
 
-/* ---------- 在线城市边界（带缓存） ---------- */
-async function getGeo(adcode){
-  if(geoCache[adcode]) return geoCache[adcode];
-  const res = await fetch(`${GEO}/${adcode}.json`);
-  if(!res.ok) throw new Error('城市边界缺失');
-  const data = await res.json();
-  geoCache[adcode] = data;
-  return data;
+async function loadCities(){
+  if(cityIndex) return cityIndex;
+  if(cityLoading) return cityLoading;
+  cityLoading = fetch(CITY_URL)
+    .then(r=>{ if(!r.ok) throw new Error('城市边界缺失'); return r.json(); })
+    .then(data=>{
+      cityIndex = {};
+      data.features.forEach(f=>{ cityIndex[String(f.properties.adcode)] = f; });
+      return cityIndex;
+    })
+    .catch(e=>{
+      console.warn('城市边界加载失败，使用圆圈兜底', e);
+      cityIndex = null;
+      return null;
+    });
+  return cityLoading;
+}
+loadCities();
+
+async function getCityFeature(adcode){
+  await loadCities();
+  if(cityIndex && cityIndex[adcode]){
+    return { type:"FeatureCollection", features:[cityIndex[adcode]] };
+  }
+  return null;
 }
 
 const hoverStyle  = { color:'#8a3f55', weight:2,   fillColor:'#f6c6cf', fillOpacity:.5 };
@@ -193,18 +216,16 @@ const activeStyle = { color:'#8a3f55', weight:2.5, fillColor:'#f6c6cf', fillOpac
 
 function removeLayer(l){ if(l){ map.removeLayer(l); l=null; } }
 
-/* 悬停城市轮廓预览 */
 async function previewPlace(i){
   if(current===i) return;
   const p = places[i];
   const token = ++hoverToken;
-  try{
-    const data = await getGeo(p.adcode);
-    if(token!==hoverToken) return;
-    removeLayer(hoverLayer);
-    hoverLayer = L.geoJSON(data,{style:hoverStyle}).addTo(map);
-  }catch(e){
-    removeLayer(hoverLayer);
+  const geo = await getCityFeature(p.adcode);
+  if(token!==hoverToken) return;
+  removeLayer(hoverLayer);
+  if(geo){
+    hoverLayer = L.geoJSON(geo,{style:hoverStyle}).addTo(map);
+  }else{
     hoverLayer = L.circle([p.lat,p.lng],{radius:p.range,...hoverStyle,dashArray:'4 4'}).addTo(map);
   }
 }
@@ -213,10 +234,10 @@ function clearPreview(){ hoverToken++; removeLayer(hoverLayer); }
 async function highlightPlace(i){
   const p = places[i];
   removeLayer(highlightLayer);
-  try{
-    const data = await getGeo(p.adcode);
-    highlightLayer = L.geoJSON(data,{style:activeStyle}).addTo(map);
-  }catch(e){
+  const geo = await getCityFeature(p.adcode);
+  if(geo){
+    highlightLayer = L.geoJSON(geo,{style:activeStyle}).addTo(map);
+  }else{
     highlightLayer = L.circle([p.lat,p.lng],{
       radius:p.range, color:'#8a3f55', weight:2.5,
       fillColor:'#f6c6cf', fillOpacity:.45, dashArray:'4 4'
