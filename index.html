@@ -1,111 +1,254 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的互动相册</title>
-    <style>
-        * {margin:0;padding:0;box-sizing:border-box;}
-        body {background:#111;color:#fff;padding:20px;font-family:system-ui;}
-        h1 {text-align:center;margin-bottom:30px;font-weight:500;}
-        .gallery {
-            column-count:3;
-            column-gap:12px;
-            max-width:1200px;
-            margin:0 auto;
-        }
-        .gallery-item {
-            break-inside:avoid;
-            margin-bottom:12px;
-            cursor:pointer;
-            border-radius:8px;
-            overflow:hidden;
-        }
-        .gallery-item img {
-            width:100%;
-            display:block;
-            transition:0.25s;
-        }
-        .gallery-item:hover img {opacity:0.85;}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Y & H · Our Little Archive</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family: "Noto Serif SC",serif;
+  background-color: #f9f5ee;
+  color:#444;
+  overflow:hidden;
+  height:100vh;
+}
+/* 封面页 */
+.cover{
+  position:absolute;
+  inset:0;
+  background:#f9f5ee;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  z-index:10;
+  transition: opacity 0.8s ease;
+}
+.cover.hidden{opacity:0;pointer-events:none;}
+.cover-logo{
+  font-size:14px;
+  letter-spacing:4px;
+  margin-bottom:40px;
+}
+.cover-btn{
+  border:1px solid #888;
+  padding:12px 32px;
+  background:transparent;
+  border-radius:999px;
+  font-size:14px;
+  cursor:pointer;
+  transition:0.3s;
+  font-family:inherit;
+}
+.cover-btn:hover{
+  background:#444;
+  color:#f9f5ee;
+}
 
-        /* 大图弹窗 */
-        .lightbox {
-            position:fixed;inset:0;
-            background:rgba(0,0,0,0.92);
-            display:none;align-items:center;justify-content:center;
-            z-index:999;
-        }
-        .lightbox.active {display:flex;}
-        .lightbox img {max-width:90%;max-height:90%;}
-        .close {position:absolute;top:20px;right:30px;color:#fff;font-size:36px;cursor:pointer;}
-        .prev,.next {
-            position:absolute;top:50%;transform:translateY(-50%);
-            color:#fff;font-size:40px;cursor:pointer;padding:16px;
-        }
-        .prev {left:10px;}
-        .next {right:10px;}
-        @media(max-width:768px){.gallery{column-count:2;}}
-        @media(max-width:480px){.gallery{column-count:1;}}
-    </style>
+/* 主容器，视差跟随鼠标 */
+.wrapper{
+  width:100vw;
+  height:100vh;
+  display:none;
+  align-items:center;
+  justify-content:center;
+}
+.wrapper.show{display:flex;}
+.page{
+  width:90%;
+  max-width:1100px;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:40px;
+  align-items:center;
+}
+.img-box{
+  overflow:hidden;
+  border-radius:6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+.img-box img{
+  width:100%;
+  display:block;
+  transform: translate(var(--tx,0px), var(--ty,0px));
+  transition: transform 0.08s linear;
+}
+.text-side{
+  padding:0 20px;
+}
+.chapter-tag{
+  font-size:12px;
+  letter-spacing:2px;
+  opacity:0.6;
+  margin-bottom:16px;
+}
+.text-side h2{
+  font-weight:400;
+  font-size:22px;
+  line-height:1.8;
+  margin-bottom:16px;
+}
+.text-side p{
+  font-size:14px;
+  line-height:1.7;
+  opacity:0.75;
+}
+
+/* 翻页控件 */
+.nav{
+  position:absolute;
+  bottom:48px;
+  left:0;
+  width:100%;
+  display:flex;
+  justify-content:space-between;
+  padding:0 40px;
+}
+.nav button{
+  background:transparent;
+  border:none;
+  font-size:14px;
+  opacity:0.7;
+  cursor:pointer;
+  font-family:inherit;
+}
+.nav button:hover{opacity:1;}
+.dots{
+  position:absolute;
+  bottom:48px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:10px;
+}
+.dot{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#ccc;
+  transition:0.3s;
+}
+.dot.active{background:#555;}
+</style>
 </head>
 <body>
-    <h1>📷 我的相册</h1>
-    <div class="gallery" id="gallery"></div>
+<!-- 封面 -->
+<div class="cover" id="cover">
+  <div class="cover-logo">Y & H · OUR LITTLE ARCHIVE</div>
+  <button class="cover-btn" id="enterBtn">进入存档</button>
+</div>
 
-    <div class="lightbox" id="lightbox">
-        <span class="close">&times;</span>
-        <span class="prev">&#10094;</span>
-        <img id="lightImg" src="" alt="">
-        <span class="next">&#10095;</span>
+<!-- 主H5页面 -->
+<div class="wrapper" id="wrapper">
+  <div class="page" id="pageBox">
+    <div class="img-box">
+      <img id="mainImg" src="" alt="">
     </div>
+    <div class="text-side">
+      <div class="chapter-tag" id="tag"></div>
+      <h2 id="title"></h2>
+      <p id="desc"></p>
+    </div>
+  </div>
+  <div class="nav">
+    <button id="prevBtn">← 上一段</button>
+    <button id="nextBtn">下一段 →</button>
+  </div>
+  <div class="dots" id="dotsBox"></div>
+</div>
 
-    <script>
-        // ========== 在这里添加你的图片文件名 ==========
-        const imgList = [
-            "images/photo1.jpg",
-            "images/photo2.jpg",
-            "images/photo3.jpg"
-        ];
-        // ==============================================
-        const gallery = document.getElementById('gallery');
-        const lightbox = document.getElementById('lightbox');
-        const lightImg = document.getElementById('lightImg');
-        const closeBtn = document.querySelector('.close');
-        const prevBtn = document.querySelector('.prev');
-        const nextBtn = document.querySelector('.next');
-        let currentIdx = 0;
+<script>
+// ========== 在这里编辑你的章节内容 ==========
+const chapters = [
+  {
+    img: "images/ch1.jpg",
+    tag: "CHAPTER 01 / WHERE IT ALL BEGAN",
+    title: "那天的咖啡馆，还藏着三个秘密。",
+    desc: "第一次见面的时候，你把咖啡点得比自己还甜。"
+  },
+  {
+    img: "images/ch2.jpg",
+    tag: "CHAPTER 02 / WANDER",
+    title: "我们踩着黄昏，慢慢走。",
+    desc: "风把所有琐碎烦恼，都留在街道尽头。"
+  },
+  {
+    img: "images/ch3.jpg",
+    tag: "CHAPTER 03 / MEMORY",
+    title: "这些碎片，拼凑成我们。",
+    desc: "不用急着奔赴终点，此刻已经足够珍贵。"
+  }
+];
+// ==========================================
 
-        // 渲染瀑布流
-        imgList.forEach((src,idx)=>{
-            const div = document.createElement('div');
-            div.className = 'gallery-item';
-            div.innerHTML = `<img src="${src}" alt="photo">`;
-            div.onclick = ()=>{openLight(idx);};
-            gallery.appendChild(div);
-        })
+const cover = document.getElementById('cover');
+const wrapper = document.getElementById('wrapper');
+const enterBtn = document.getElementById('enterBtn');
+const mainImg = document.getElementById('mainImg');
+const tagDom = document.getElementById('tag');
+const titleDom = document.getElementById('title');
+const descDom = document.getElementById('desc');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const dotsBox = document.getElementById('dotsBox');
 
-        function openLight(i){
-            currentIdx = i;
-            lightImg.src = imgList[currentIdx];
-            lightbox.classList.add('active');
-        }
-        closeBtn.onclick = ()=>lightbox.classList.remove('active');
-        prevBtn.onclick = ()=>{
-            currentIdx = (currentIdx -1 + imgList.length) % imgList.length;
-            lightImg.src = imgList[currentIdx];
-        }
-        nextBtn.onclick = ()=>{
-            currentIdx = (currentIdx +1) % imgList.length;
-            lightImg.src = imgList[currentIdx];
-        }
-        lightbox.onclick = (e)=>{if(e.target===lightbox) lightbox.classList.remove('active');}
-        // 键盘左右翻页
-        document.onkeydown = (e)=>{
-            if(!lightbox.classList.contains('active')) return;
-            if(e.key==='ArrowLeft') prevBtn.click();
-            if(e.key==='ArrowRight') nextBtn.click();
-            if(e.key==='Escape') closeBtn.click();
-        }
-    </script>
+let current = 0;
+
+// 生成圆点指示器
+function renderDots(){
+  dotsBox.innerHTML = "";
+  chapters.forEach((_,i)=>{
+    const d = document.createElement('div');
+    d.className = 'dot' + (i===current ? ' active':'');
+    d.onclick = ()=>go(i);
+    dotsBox.appendChild(d);
+  })
+}
+
+// 切换章节
+function go(idx){
+  current = idx;
+  const c = chapters[current];
+  mainImg.src = c.img;
+  tagDom.innerText = c.tag;
+  titleDom.innerText = c.title;
+  descDom.innerText = c.desc;
+  renderDots();
+}
+
+// 鼠标视差联动
+document.addEventListener('mousemove',(e)=>{
+  const x = e.clientX - window.innerWidth/2;
+  const y = e.clientY - window.innerHeight/2;
+  const tx = x * 0.03;
+  const ty = y * 0.03;
+  mainImg.style.setProperty('--tx', tx + 'px');
+  mainImg.style.setProperty('--ty', ty + 'px');
+})
+
+// 进入按钮
+enterBtn.onclick = ()=>{
+  cover.classList.add('hidden');
+  wrapper.classList.add('show');
+  go(0);
+}
+
+prevBtn.onclick = ()=>{
+  current = (current -1 + chapters.length) % chapters.length;
+  go(current);
+}
+nextBtn.onclick = ()=>{
+  current = (current +1) % chapters.length;
+  go(current);
+}
+// 键盘左右翻页
+document.onkeydown = (e)=>{
+  if(!wrapper.classList.contains('show')) return;
+  if(e.key==='ArrowLeft') prevBtn.click();
+  if(e.key==='ArrowRight') nextBtn.click();
+}
+renderDots();
+</script>
 </body>
 </html>
