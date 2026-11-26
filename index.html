@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的互动相册</title>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box;}
+        body {background:#111;color:#fff;padding:20px;font-family:system-ui;}
+        h1 {text-align:center;margin-bottom:30px;font-weight:500;}
+        .gallery {
+            column-count:3;
+            column-gap:12px;
+            max-width:1200px;
+            margin:0 auto;
+        }
+        .gallery-item {
+            break-inside:avoid;
+            margin-bottom:12px;
+            cursor:pointer;
+            border-radius:8px;
+            overflow:hidden;
+        }
+        .gallery-item img {
+            width:100%;
+            display:block;
+            transition:0.25s;
+        }
+        .gallery-item:hover img {opacity:0.85;}
+
+        /* 大图弹窗 */
+        .lightbox {
+            position:fixed;inset:0;
+            background:rgba(0,0,0,0.92);
+            display:none;align-items:center;justify-content:center;
+            z-index:999;
+        }
+        .lightbox.active {display:flex;}
+        .lightbox img {max-width:90%;max-height:90%;}
+        .close {position:absolute;top:20px;right:30px;color:#fff;font-size:36px;cursor:pointer;}
+        .prev,.next {
+            position:absolute;top:50%;transform:translateY(-50%);
+            color:#fff;font-size:40px;cursor:pointer;padding:16px;
+        }
+        .prev {left:10px;}
+        .next {right:10px;}
+        @media(max-width:768px){.gallery{column-count:2;}}
+        @media(max-width:480px){.gallery{column-count:1;}}
+    </style>
+</head>
+<body>
+    <h1>📷 我的相册</h1>
+    <div class="gallery" id="gallery"></div>
+
+    <div class="lightbox" id="lightbox">
+        <span class="close">&times;</span>
+        <span class="prev">&#10094;</span>
+        <img id="lightImg" src="" alt="">
+        <span class="next">&#10095;</span>
+    </div>
+
+    <script>
+        // ========== 在这里添加你的图片文件名 ==========
+        const imgList = [
+            "images/photo1.jpg",
+            "images/photo2.jpg",
+            "images/photo3.jpg"
+        ];
+        // ==============================================
+        const gallery = document.getElementById('gallery');
+        const lightbox = document.getElementById('lightbox');
+        const lightImg = document.getElementById('lightImg');
+        const closeBtn = document.querySelector('.close');
+        const prevBtn = document.querySelector('.prev');
+        const nextBtn = document.querySelector('.next');
+        let currentIdx = 0;
+
+        // 渲染瀑布流
+        imgList.forEach((src,idx)=>{
+            const div = document.createElement('div');
+            div.className = 'gallery-item';
+            div.innerHTML = `<img src="${src}" alt="photo">`;
+            div.onclick = ()=>{openLight(idx);};
+            gallery.appendChild(div);
+        })
+
+        function openLight(i){
+            currentIdx = i;
+            lightImg.src = imgList[currentIdx];
+            lightbox.classList.add('active');
+        }
+        closeBtn.onclick = ()=>lightbox.classList.remove('active');
+        prevBtn.onclick = ()=>{
+            currentIdx = (currentIdx -1 + imgList.length) % imgList.length;
+            lightImg.src = imgList[currentIdx];
+        }
+        nextBtn.onclick = ()=>{
+            currentIdx = (currentIdx +1) % imgList.length;
+            lightImg.src = imgList[currentIdx];
+        }
+        lightbox.onclick = (e)=>{if(e.target===lightbox) lightbox.classList.remove('active');}
+        // 键盘左右翻页
+        document.onkeydown = (e)=>{
+            if(!lightbox.classList.contains('active')) return;
+            if(e.key==='ArrowLeft') prevBtn.click();
+            if(e.key==='ArrowRight') nextBtn.click();
+            if(e.key==='Escape') closeBtn.click();
+        }
+    </script>
+</body>
+</html>
