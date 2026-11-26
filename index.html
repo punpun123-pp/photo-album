@@ -10,6 +10,7 @@
     --bg:#fbeef0; --ink:#4a3540; --soft:#9a7f88;
     --line:#ecd3d8; --accent:#c9768a; --accent-deep:#8a3f55;
     --card:#fffafb; --hl-fill:#f6c6cf; --hl-line:#d98a9b;
+    --prov-fill:#fde0e5; --prov-line:#e9b3bd;
   }
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{height:100%;}
@@ -18,21 +19,20 @@
     font-family:"Noto Sans SC",system-ui,-apple-system,sans-serif;overflow:hidden;
   }
 
-  #map{position:absolute;inset:0;z-index:1;transition:all .8s cubic-bezier(.22,.8,.3,1);}
-  body.mode-photo #map{width:50%;opacity:.35;filter:saturate(.9);}
-  @media(max-width:820px){ body.mode-photo #map{width:100%;height:42%;} }
-
-  /* 把 OSM 瓦片路网压淡、降饱和，做出浅色卡通感 */
-  .leaflet-tile-pane .leaflet-tile{
-    filter:brightness(1.07) saturate(.45) contrast(.96);
+  /* 纯矢量底图：粉米白渐变背景，不加载在线瓦片 */
+  #map{
+    position:absolute;inset:0;z-index:1;
+    background:linear-gradient(180deg,#fdeef0 0%,#fbe7ea 100%);
+    transition:all .8s cubic-bezier(.22,.8,.3,1);
   }
-  /* 粉色滤镜层（压在底图上、标记下） */
-  #tint{position:absolute;inset:0;z-index:300;pointer-events:none;background:rgba(247,200,210,.28);}
+  body.mode-photo #map{width:50%;opacity:.4;}
+  @media(max-width:820px){ body.mode-photo #map{width:100%;height:42%;} }
 
   .map-title{position:absolute;top:28px;left:36px;z-index:500;pointer-events:none;}
   .map-title .brand{font-size:13px;letter-spacing:.35em;color:var(--ink);}
   .map-title .sub{font-size:12px;letter-spacing:.2em;color:var(--soft);margin-top:6px;}
 
+  /* 爱心标记 */
   .pin{
     background:var(--accent);border:3px solid #fff;border-radius:50%;
     width:24px;height:24px;box-shadow:0 5px 16px rgba(150,70,90,.4);
@@ -74,7 +74,6 @@
 <body>
 
   <div id="map"></div>
-  <div id="tint"></div>
 
   <div class="map-title">
     <div class="brand">OUR PLACES</div>
@@ -83,7 +82,7 @@
 
   <aside class="panel" id="panel">
     <header class="panel-head">
-      <button class="backBtn" id="backBtn">← 返回地图</button>
+      <button class="back-btn" id="backBtn">← 返回地图</button>
       <div class="kicker" id="pKicker"></div>
       <h2 id="pTitle"></h2>
       <div class="date" id="pDate"></div>
@@ -95,8 +94,8 @@
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
-   adcode: 行政区划代码（拉真实行政区边界，无需 key）
-   range : GeoJSON 失败时的兜底圆圈半径（米）
+   adcode: 行政区划代码（拉真实边界，无需 key）
+   range : 边界加载失败时的兜底圆圈半径（米）
    ============================================================ */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
@@ -128,64 +127,102 @@ const GEO = "https://geo.datav.aliyun.com/areas_v3/bound";
 const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
 
-/* 无需 key 的官方 OSM 浅色底图（路网由上方 CSS 滤镜压淡） */
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  subdomains:'abc', maxZoom:19
-}).addTo(map);
+/* 图层：省面 / 悬停预览 / 点击选中 */
+let provinceLayer = null, hoverLayer = null, highlightLayer = null;
+const geoCache = {};
+let current = -1;
+let hoverToken = 0;
 
-let highlight = null;
-
-/* ---------- 省界（无需 key） ---------- */
-async function loadProvinceBorder(){
+/* ---------- 加载省面（扁平卡通底图，无路网无地名） ---------- */
+async function loadProvince(){
   try{
     const res = await fetch(`${GEO}/100000.json`);
     const data = await res.json();
-    L.geoJSON(data,{
-      style:{ color:'#e6a9b6', weight:1.6, fillColor:'transparent', fillOpacity:0 }
+    provinceLayer = L.geoJSON(data,{
+      style:{
+        fillColor:'#fde0e5', fillOpacity:.7,
+        color:'#e9b3bd', weight:1.2
+      }
     }).addTo(map);
-  }catch(e){ console.warn('省界加载失败，使用底图默认边界', e); }
+  }catch(e){ console.warn('省面加载失败', e); }
 }
-loadProvinceBorder();
+loadProvince();
+
+/* ---------- 边界数据缓存 ---------- */
+async function getGeo(adcode){
+  if(geoCache[adcode]) return geoCache[adcode];
+  const res = await fetch(`${GEO}/${adcode}.json`);
+  const data = await res.json();
+  geoCache[adcode] = data;
+  return data;
+}
+
+const hoverStyle = { color:'#8a3f55', weight:2, fillColor:'#f6c6cf', fillOpacity:.5 };
+const activeStyle= { color:'#8a3f55', weight:2.5, fillColor:'#f6c6cf', fillOpacity:.45 };
+
+function removeLayer(layer){ if(layer){ map.removeLayer(layer); layer=null; } }
+
+/* 悬停预览轮廓 */
+async function previewPlace(i){
+  if(current===i) return;
+  const p = places[i];
+  const token = ++hoverToken;
+  try{
+    const data = await getGeo(p.adcode);
+    if(token!==hoverToken) return;           // 防止快速划过串层
+    removeLayer(hoverLayer);
+    hoverLayer = L.geoJSON(data,{style:hoverStyle}).addTo(map);
+  }catch(e){
+    removeLayer(hoverLayer);
+    hoverLayer = L.circle([p.lat,p.lng],{radius:p.range,...hoverStyle,dashArray:'4 4'}).addTo(map);
+  }
+}
+function clearPreview(){
+  hoverToken++;
+  removeLayer(hoverLayer);
+}
+
+/* 点击选中高亮 */
+async function highlightPlace(i){
+  const p = places[i];
+  removeLayer(highlightLayer);
+  try{
+    const data = await getGeo(p.adcode);
+    highlightLayer = L.geoJSON(data,{style:activeStyle}).addTo(map);
+  }catch(e){
+    highlightLayer = L.circle([p.lat,p.lng],{
+      radius:p.range, color:'#8a3f55', weight:2.5,
+      fillColor:'#f6c6cf', fillOpacity:.45, dashArray:'4 4'
+    }).addTo(map);
+  }
+}
 
 const pinIcon = L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[24,24],iconAnchor:[12,12]});
 
 places.forEach((p,i)=>{
   const marker = L.marker([p.lat,p.lng],{icon:pinIcon}).addTo(map);
   marker.bindTooltip(p.name,{direction:'top',offset:[0,-12]});
-  marker.on('mouseover',()=>{ const el=marker.getElement(); if(el) el.classList.add('hover'); });
-  marker.on('mouseout', ()=>{ const el=marker.getElement(); if(el) el.classList.remove('hover'); });
+
+  marker.on('mouseover',()=>{
+    const el=marker.getElement(); if(el) el.classList.add('hover');
+    previewPlace(i);
+  });
+  marker.on('mouseout',()=>{
+    const el=marker.getElement(); if(el) el.classList.remove('hover');
+    if(current!==i) clearPreview();
+  });
   marker.on('click',()=>openPlace(i));
 });
-
-function clearHighlight(){
-  if(highlight){ map.removeLayer(highlight); highlight=null; }
-}
-
-async function highlightPlace(p){
-  clearHighlight();
-  if(p.adcode){
-    try{
-      const res = await fetch(`${GEO}/${p.adcode}.json`);
-      const data = await res.json();
-      highlight = L.geoJSON(data,{
-        style:{ color:'#d98a9b', weight:2, fillColor:'#f6c6cf', fillOpacity:.45 }
-      }).addTo(map);
-      return;
-    }catch(e){ console.warn('行政区边界加载失败，退回圆圈', e); }
-  }
-  highlight = L.circle([p.lat,p.lng],{
-    radius:p.range, color:'#d98a9b', weight:2,
-    fillColor:'#f6c6cf', fillOpacity:.45, dashArray:'4 4'
-  }).addTo(map);
-}
 
 const gallery = document.getElementById('gallery');
 
 async function openPlace(i){
   const p = places[i];
+  current = i;
+  clearPreview();
   document.body.classList.add('mode-photo');
   map.flyTo([p.lat,p.lng], 9, {duration:1.2});
-  await highlightPlace(p);
+  await highlightPlace(i);
 
   document.getElementById('pKicker').textContent = "PLACE 0" + (i+1);
   document.getElementById('pTitle').textContent = p.name;
@@ -207,8 +244,10 @@ async function openPlace(i){
 }
 
 document.getElementById('backBtn').onclick = ()=>{
+  current = -1;
   document.body.classList.remove('mode-photo');
-  clearHighlight();
+  removeLayer(highlightLayer);
+  clearPreview();
   map.flyTo(HOME.center, HOME.zoom,{duration:1});
 };
 
