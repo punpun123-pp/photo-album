@@ -22,7 +22,12 @@
   body.mode-photo #map{width:50%;opacity:.35;filter:saturate(.9);}
   @media(max-width:820px){ body.mode-photo #map{width:100%;height:42%;} }
 
-  #tint{position:absolute;inset:0;z-index:300;pointer-events:none;background:rgba(247,200,210,.22);}
+  /* 把 OSM 瓦片路网压淡、降饱和，做出浅色卡通感 */
+  .leaflet-tile-pane .leaflet-tile{
+    filter:brightness(1.07) saturate(.45) contrast(.96);
+  }
+  /* 粉色滤镜层（压在底图上、标记下） */
+  #tint{position:absolute;inset:0;z-index:300;pointer-events:none;background:rgba(247,200,210,.28);}
 
   .map-title{position:absolute;top:28px;left:36px;z-index:500;pointer-events:none;}
   .map-title .brand{font-size:13px;letter-spacing:.35em;color:var(--ink);}
@@ -78,7 +83,7 @@
 
   <aside class="panel" id="panel">
     <header class="panel-head">
-      <button class="back-btn" id="backBtn">← 返回地图</button>
+      <button class="backBtn" id="backBtn">← 返回地图</button>
       <div class="kicker" id="pKicker"></div>
       <h2 id="pTitle"></h2>
       <div class="date" id="pDate"></div>
@@ -90,8 +95,8 @@
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
-   adcode: 行政区划代码（用于拉取真实行政区边界）
-   range : GeoJSON 加载失败时的兜底圆圈半径（米）
+   adcode: 行政区划代码（拉真实行政区边界，无需 key）
+   range : GeoJSON 失败时的兜底圆圈半径（米）
    ============================================================ */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
@@ -123,13 +128,14 @@ const GEO = "https://geo.datav.aliyun.com/areas_v3/bound";
 const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
-  subdomains:'abcd', maxZoom:19
+/* 无需 key 的官方 OSM 浅色底图（路网由上方 CSS 滤镜压淡） */
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  subdomains:'abc', maxZoom:19
 }).addTo(map);
 
 let highlight = null;
 
-/* ---------- 加载并加粗省界 ---------- */
+/* ---------- 省界（无需 key） ---------- */
 async function loadProvinceBorder(){
   try{
     const res = await fetch(`${GEO}/100000.json`);
@@ -155,7 +161,6 @@ function clearHighlight(){
   if(highlight){ map.removeLayer(highlight); highlight=null; }
 }
 
-/* 优先拉真实行政区边界；失败退回圆圈 */
 async function highlightPlace(p){
   clearHighlight();
   if(p.adcode){
