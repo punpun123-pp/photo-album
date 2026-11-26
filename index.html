@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Our Places · 回忆地图相册</title>
 <link rel="stylesheet" href="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<!-- Waline CSS -->
+<link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css" />
 <style>
   :root{
     --bg:#fbeef0; --ink:#4a3540; --soft:#9a7f88;
@@ -82,7 +84,7 @@
   .gallery-item img{width:100%;display:block;}
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
 
-  /* ===== 评论区：悬停卡片时从底部滑出 ===== */
+  /* ===== Waline评论容器样式替换原来本地评论 ===== */
   .comment-wrap{
     padding:10px 12px 12px;
     max-height:0;overflow:hidden;
@@ -92,24 +94,19 @@
   }
   .gallery-item:hover .comment-wrap,
   .comment-wrap:focus-within{
-    max-height:260px;opacity:1;transform:translateY(0);
+    max-height:320px;opacity:1;transform:translateY(0);
   }
-  .comment-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px;}
-  .comment-item{font-size:12.5px;line-height:1.6;color:var(--ink);}
-  .comment-item .time{color:var(--soft);font-size:11px;margin-left:6px;}
-  .comment-form{display:flex;gap:8px;}
-  .comment-form input{
-    flex:1;border:1px solid var(--line);border-radius:6px;
-    padding:7px 10px;font-size:12.5px;font-family:inherit;background:#fdf7f8;color:var(--ink);
+  /* Waline主题色匹配你的粉色 */
+  .comment-wrap {
+    --waline-theme-color: var(--accent);
+    --waline-active-color: var(--accent-deep);
   }
-  .comment-form input:focus{outline:none;border-color:var(--accent);}
-  .comment-form button{
-    border:none;background:var(--accent);color:#fff;border-radius:6px;
-    padding:7px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;
-    transition:background .2s;
+  .comment-wrap .wl-comment {
+    font-size:12.5px;
   }
-  .comment-form button:hover{background:var(--accent-deep);}
-  .comment-count{font-size:11px;color:var(--soft);padding:6px 12px 0;}
+  .comment-wrap .wl-input-wrapper {
+    border-color: var(--line);
+  }
 
   .gallery::-webkit-scrollbar{width:6px;}
   .gallery::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
@@ -137,10 +134,15 @@
   </aside>
 
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { init } from 'https://unpkg.com/@waline/client@v3/dist/waline.js';
+window.WalineInit = init;
+</script>
 <script>
 /**
  * Our Places - 回忆地图相册
- * 地图主体锁定不变；本版新增：照片悬停弹动 + 本机评论（localStorage）
+ * 修改说明：移除localStorage本地评论，替换为Waline服务端评论
+ * Waline服务地址：https://waline-vercel-maa8.vercel.app
  */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
@@ -311,37 +313,13 @@ places.forEach((p,i)=>{
   marker.on('click',()=>openPlace(i));
 });
 
-/* ================= 评论（本机 localStorage） ================= */
-const COMMENT_KEY = "album_comments";
-function loadComments(){
-  try{ return JSON.parse(localStorage.getItem(COMMENT_KEY)) || {}; }
-  catch(e){ return {}; }
-}
-function saveComment(key, text){
-  const all = loadComments();
-  if(!all[key]) all[key] = [];
-  all[key].push({ text, time:new Date().toLocaleString("zh-CN") });
-  localStorage.setItem(COMMENT_KEY, JSON.stringify(all));
-}
-function fmtTime(t){ return t; }
-
-const gallery = document.getElementById('gallery');
-
-function renderComments(key, listEl, countEl){
-  const all = loadComments();
-  const list = all[key] || [];
-  listEl.innerHTML = list.length
-    ? list.map(c=>`<div class="comment-item">${escapeHtml(c.text)}<span class="time">${fmtTime(c.time)}</span></div>`).join("")
-    : "";
-  countEl.textContent = list.length ? `💬 ${list.length} 条评论` : "";
-}
-
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-}
+/* ================= Waline 服务端评论替换本地评论 ================= */
+const WALINE_SERVER = "https://waline-vercel-maa8.vercel.app";
+// 用来存放每个卡片对应的waline实例，切换销毁
+const walineInstances = new Map();
 
 function buildCard(src, placeName, idx){
-  const key = `${placeName}#${idx}`;
+  const pathKey = `/memory-map/${placeName}-photo-${idx}`;
   const item = document.createElement('div');
   item.className = 'gallery-item';
 
@@ -349,39 +327,35 @@ function buildCard(src, placeName, idx){
   img.src = src; img.alt = placeName;
   img.onerror = ()=>{ item.style.display='none'; };
 
-  const count = document.createElement('div');
-  count.className = 'comment-count';
-
   const wrap = document.createElement('div');
   wrap.className = 'comment-wrap';
-  const listEl = document.createElement('div');
-  listEl.className = 'comment-list';
-  const form = document.createElement('form');
-  form.className = 'comment-form';
-  const input = document.createElement('input');
-  input.placeholder = '写下这条回忆…';
-  const btn = document.createElement('button');
-  btn.type = 'submit'; btn.textContent = '发送';
-  form.appendChild(input); form.appendChild(btn);
-  wrap.appendChild(listEl); wrap.appendChild(form);
-
-  form.addEventListener('submit', e=>{
-    e.preventDefault();
-    const text = input.value.trim();
-    if(!text) return;
-    saveComment(key, text);
-    input.value = '';
-    renderComments(key, listEl, count);
-  });
+  const walineDom = document.createElement('div');
+  walineDom.className = 'waline-container';
+  wrap.appendChild(walineDom);
 
   item.appendChild(img);
-  item.appendChild(count);
   item.appendChild(wrap);
-  renderComments(key, listEl, count);
+
+  // 初始化Waline
+  const instance = window.WalineInit({
+    el: walineDom,
+    serverURL: WALINE_SERVER,
+    path: pathKey,
+    lang: 'zh-CN',
+    pageview: false
+  });
+  walineInstances.set(pathKey, instance);
+
   return item;
 }
 
 async function openPlace(i){
+  // 先销毁上一组所有waline实例，防止残留
+  for(const ins of walineInstances.values()){
+    ins.destroy();
+  }
+  walineInstances.clear();
+
   const p = places[i];
   current = i;
   clearPreview();
@@ -404,6 +378,12 @@ async function openPlace(i){
 }
 
 document.getElementById('backBtn').onclick = ()=>{
+  // 返回地图，销毁全部waline
+  for(const ins of walineInstances.values()){
+    ins.destroy();
+  }
+  walineInstances.clear();
+
   current = -1;
   document.body.classList.remove('mode-photo');
   removeLayer(highlightLayer);
