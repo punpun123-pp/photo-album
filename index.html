@@ -9,8 +9,7 @@
   :root{
     --bg:#fbeef0; --ink:#4a3540; --soft:#9a7f88;
     --line:#ecd3d8; --accent:#c9768a; --accent-deep:#8a3f55;
-    --card:#fffafb; --hl-fill:#f6c6cf; --hl-line:#d98a9b;
-    --prov-fill:#fde0e5; --prov-line:#e9b3bd;
+    --card:#fffafb; --hl-fill:#f6c6cf; --hl-line:#8a3f55;
   }
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{height:100%;}
@@ -19,7 +18,6 @@
     font-family:"Noto Sans SC",system-ui,-apple-system,sans-serif;overflow:hidden;
   }
 
-  /* 纯矢量底图：粉米白渐变背景，不加载在线瓦片 */
   #map{
     position:absolute;inset:0;z-index:1;
     background:linear-gradient(180deg,#fdeef0 0%,#fbe7ea 100%);
@@ -32,7 +30,6 @@
   .map-title .brand{font-size:13px;letter-spacing:.35em;color:var(--ink);}
   .map-title .sub{font-size:12px;letter-spacing:.2em;color:var(--soft);margin-top:6px;}
 
-  /* 爱心标记 */
   .pin{
     background:var(--accent);border:3px solid #fff;border-radius:50%;
     width:24px;height:24px;box-shadow:0 5px 16px rgba(150,70,90,.4);
@@ -94,7 +91,7 @@
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
-   adcode: 行政区划代码（拉真实边界，无需 key）
+   adcode: 行政区划代码（拉城市边界，无需 key）
    range : 边界加载失败时的兜底圆圈半径（米）
    ============================================================ */
 const places = [
@@ -127,28 +124,38 @@ const GEO = "https://geo.datav.aliyun.com/areas_v3/bound";
 const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
 
-/* 图层：省面 / 悬停预览 / 点击选中 */
-let provinceLayer = null, hoverLayer = null, highlightLayer = null;
+let hoverLayer = null, highlightLayer = null;
 const geoCache = {};
-let current = -1;
-let hoverToken = 0;
+let current = -1, hoverToken = 0;
 
-/* ---------- 加载省面（扁平卡通底图，无路网无地名） ---------- */
+/* 分省粉色阶（浅 → 深），相邻省错开填色 */
+const PINK = ['#f7d9df','#f3c8d1','#eeb6c2','#e9a5b4'];
+function hashAdcode(code){ let s=String(code); let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h; }
+
+function provinceStyle(f){
+  const c = PINK[hashAdcode(f.properties.adcode) % PINK.length];
+  return { fillColor:c, fillOpacity:.9, color:'#d99aad', weight:1.2 };
+}
+
+/* ---------- 加载分省矢量底图（full = 35 个省级面） ---------- */
 async function loadProvince(){
   try{
-    const res = await fetch(`${GEO}/100000.json`);
+    const res = await fetch(`${GEO}/100000_full.json`);
     const data = await res.json();
-    provinceLayer = L.geoJSON(data,{
-      style:{
-        fillColor:'#fde0e5', fillOpacity:.7,
-        color:'#e9b3bd', weight:1.2
+    L.geoJSON(data,{
+      style:provinceStyle,
+      onEachFeature:(f, layer)=>{
+        layer.on('mouseover',()=>{
+          layer.setStyle({fillColor:'#e08ba0', fillOpacity:.95});
+          layer.bringToFront();
+        });
+        layer.on('mouseout',()=>{ layer.setStyle(provinceStyle(f)); });
       }
     }).addTo(map);
   }catch(e){ console.warn('省面加载失败', e); }
 }
 loadProvince();
 
-/* ---------- 边界数据缓存 ---------- */
 async function getGeo(adcode){
   if(geoCache[adcode]) return geoCache[adcode];
   const res = await fetch(`${GEO}/${adcode}.json`);
@@ -157,19 +164,19 @@ async function getGeo(adcode){
   return data;
 }
 
-const hoverStyle = { color:'#8a3f55', weight:2, fillColor:'#f6c6cf', fillOpacity:.5 };
-const activeStyle= { color:'#8a3f55', weight:2.5, fillColor:'#f6c6cf', fillOpacity:.45 };
+const hoverStyle  = { color:'#8a3f55', weight:2,   fillColor:'#f6c6cf', fillOpacity:.5 };
+const activeStyle = { color:'#8a3f55', weight:2.5, fillColor:'#f6c6cf', fillOpacity:.45 };
 
-function removeLayer(layer){ if(layer){ map.removeLayer(layer); layer=null; } }
+function removeLayer(l){ if(l){ map.removeLayer(l); l=null; } }
 
-/* 悬停预览轮廓 */
+/* 悬停城市轮廓预览 */
 async function previewPlace(i){
   if(current===i) return;
   const p = places[i];
   const token = ++hoverToken;
   try{
     const data = await getGeo(p.adcode);
-    if(token!==hoverToken) return;           // 防止快速划过串层
+    if(token!==hoverToken) return;
     removeLayer(hoverLayer);
     hoverLayer = L.geoJSON(data,{style:hoverStyle}).addTo(map);
   }catch(e){
@@ -177,12 +184,8 @@ async function previewPlace(i){
     hoverLayer = L.circle([p.lat,p.lng],{radius:p.range,...hoverStyle,dashArray:'4 4'}).addTo(map);
   }
 }
-function clearPreview(){
-  hoverToken++;
-  removeLayer(hoverLayer);
-}
+function clearPreview(){ hoverToken++; removeLayer(hoverLayer); }
 
-/* 点击选中高亮 */
 async function highlightPlace(i){
   const p = places[i];
   removeLayer(highlightLayer);
@@ -202,7 +205,6 @@ const pinIcon = L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:
 places.forEach((p,i)=>{
   const marker = L.marker([p.lat,p.lng],{icon:pinIcon}).addTo(map);
   marker.bindTooltip(p.name,{direction:'top',offset:[0,-12]});
-
   marker.on('mouseover',()=>{
     const el=marker.getElement(); if(el) el.classList.add('hover');
     previewPlace(i);
