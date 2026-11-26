@@ -3,252 +3,221 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Y & H · Our Little Archive</title>
+<title>Our Places · 回忆地图相册</title>
+<link rel="stylesheet" href="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{
-  font-family: "Noto Serif SC",serif;
-  background-color: #f9f5ee;
-  color:#444;
-  overflow:hidden;
-  height:100vh;
-}
-/* 封面页 */
-.cover{
-  position:absolute;
-  inset:0;
-  background:#f9f5ee;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  z-index:10;
-  transition: opacity 0.8s ease;
-}
-.cover.hidden{opacity:0;pointer-events:none;}
-.cover-logo{
-  font-size:14px;
-  letter-spacing:4px;
-  margin-bottom:40px;
-}
-.cover-btn{
-  border:1px solid #888;
-  padding:12px 32px;
-  background:transparent;
-  border-radius:999px;
-  font-size:14px;
-  cursor:pointer;
-  transition:0.3s;
-  font-family:inherit;
-}
-.cover-btn:hover{
-  background:#444;
-  color:#f9f5ee;
-}
+  :root{
+    --bg:#f4efe7; --ink:#3b332a; --soft:#7a6f60;
+    --line:#d9cdb9; --accent:#a98a5f; --card:#fffdf9;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans SC",system-ui,-apple-system,sans-serif;
+    overflow:hidden;
+  }
 
-/* 主容器，视差跟随鼠标 */
-.wrapper{
-  width:100vw;
-  height:100vh;
-  display:none;
-  align-items:center;
-  justify-content:center;
-}
-.wrapper.show{display:flex;}
-.page{
-  width:90%;
-  max-width:1100px;
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:40px;
-  align-items:center;
-}
-.img-box{
-  overflow:hidden;
-  border-radius:6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-}
-.img-box img{
-  width:100%;
-  display:block;
-  transform: translate(var(--tx,0px), var(--ty,0px));
-  transition: transform 0.08s linear;
-}
-.text-side{
-  padding:0 20px;
-}
-.chapter-tag{
-  font-size:12px;
-  letter-spacing:2px;
-  opacity:0.6;
-  margin-bottom:16px;
-}
-.text-side h2{
-  font-weight:400;
-  font-size:22px;
-  line-height:1.8;
-  margin-bottom:16px;
-}
-.text-side p{
-  font-size:14px;
-  line-height:1.7;
-  opacity:0.75;
-}
+  /* ===== 地图层 ===== */
+  #map{position:absolute;inset:0;z-index:1;transition:all .8s cubic-bezier(.22,.8,.3,1);}
+  body.mode-photo #map{
+    width:50%;opacity:.32;filter:saturate(.85);
+  }
+  @media(max-width:820px){
+    body.mode-photo #map{width:100%;height:42%;}
+  }
 
-/* 翻页控件 */
-.nav{
-  position:absolute;
-  bottom:48px;
-  left:0;
-  width:100%;
-  display:flex;
-  justify-content:space-between;
-  padding:0 40px;
-}
-.nav button{
-  background:transparent;
-  border:none;
-  font-size:14px;
-  opacity:0.7;
-  cursor:pointer;
-  font-family:inherit;
-}
-.nav button:hover{opacity:1;}
-.dots{
-  position:absolute;
-  bottom:48px;
-  left:50%;
-  transform:translateX(-50%);
-  display:flex;
-  gap:10px;
-}
-.dot{
-  width:7px;
-  height:7px;
-  border-radius:50%;
-  background:#ccc;
-  transition:0.3s;
-}
-.dot.active{background:#555;}
+  .map-title{
+    position:absolute;top:28px;left:36px;z-index:5;pointer-events:none;
+  }
+  .map-title .brand{font-size:13px;letter-spacing:.35em;color:var(--ink);}
+  .map-title .sub{font-size:12px;letter-spacing:.2em;color:var(--soft);margin-top:6px;}
+
+  /* 自定义标记 */
+  .pin{
+    background:var(--accent);border:2px solid #fff;border-radius:50%;
+    width:16px;height:16px;box-shadow:0 4px 12px rgba(0,0,0,.25);
+    cursor:pointer;
+  }
+  .pin::after{
+    content:"♡";position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;font-size:9px;color:#fff;
+  }
+
+  /* ===== 右侧相册面板 ===== */
+  .panel{
+    position:absolute;top:0;right:0;height:100%;width:50%;z-index:10;
+    background:var(--card);border-left:1px solid var(--line);
+    transform:translateX(100%);opacity:0;
+    transition:transform .8s cubic-bezier(.22,.8,.3,1),opacity .8s ease;
+    display:flex;flex-direction:column;
+  }
+  body.mode-photo .panel{transform:translateX(0);opacity:1;}
+  @media(max-width:820px){
+    .panel{width:100%;height:58%;top:42%;}
+  }
+
+  .panel-head{padding:28px 32px 20px;border-bottom:1px solid var(--line);}
+  .back-btn{
+    background:none;border:none;cursor:pointer;color:var(--soft);
+    font-size:13px;letter-spacing:.15em;font-family:inherit;margin-bottom:14px;
+  }
+  .back-btn:hover{color:var(--ink);}
+  .panel-head .kicker{font-size:12px;letter-spacing:.3em;color:var(--accent);margin-bottom:10px;}
+  .panel-head h2{font-size:24px;font-weight:600;line-height:1.4;}
+  .panel-head .date{font-size:13px;color:var(--soft);margin-top:8px;}
+  .panel-head .desc{font-size:14px;color:var(--soft);line-height:1.8;margin-top:12px;font-weight:300;}
+
+  /* 瀑布流 */
+  .gallery{
+    flex:1;overflow-y:auto;padding:24px 32px 40px;
+    column-count:2;column-gap:16px;
+  }
+  @media(max-width:480px){.gallery{column-count:1;}}
+  .gallery-item{
+    break-inside:avoid;margin-bottom:16px;border-radius:8px;overflow:hidden;
+    background:var(--bg-soft);
+    animation:fadeUp .6s ease both;
+  }
+  .gallery-item img{width:100%;display:block;}
+  @keyframes fadeUp{
+    from{opacity:0;transform:translateY(16px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  .gallery::-webkit-scrollbar{width:6px;}
+  .gallery::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
 </style>
 </head>
 <body>
-<!-- 封面 -->
-<div class="cover" id="cover">
-  <div class="cover-logo">Y & H · OUR LITTLE ARCHIVE</div>
-  <button class="cover-btn" id="enterBtn">进入存档</button>
-</div>
 
-<!-- 主H5页面 -->
-<div class="wrapper" id="wrapper">
-  <div class="page" id="pageBox">
-    <div class="img-box">
-      <img id="mainImg" src="" alt="">
-    </div>
-    <div class="text-side">
-      <div class="chapter-tag" id="tag"></div>
-      <h2 id="title"></h2>
-      <p id="desc"></p>
-    </div>
-  </div>
-  <div class="nav">
-    <button id="prevBtn">← 上一段</button>
-    <button id="nextBtn">下一段 →</button>
-  </div>
-  <div class="dots" id="dotsBox"></div>
-</div>
+  <div id="map"></div>
 
+  <div class="map-title">
+    <div class="brand">OUR PLACES</div>
+    <div class="sub">点开一颗心，看看那里的回忆</div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <header class="panel-head">
+      <button class="back-btn" id="backBtn">← 返回地图</button>
+      <div class="kicker" id="pKicker"></div>
+      <h2 id="pTitle"></h2>
+      <div class="date" id="pDate"></div>
+      <p class="desc" id="pDesc"></p>
+    </header>
+    <div class="gallery" id="gallery"></div>
+  </aside>
+
+<script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-// ========== 在这里编辑你的章节内容 ==========
-const chapters = [
+/* ============================================================
+   地点数据：5月合肥；7月 川西甘孜→成都→西安→徐州→扬州→南京
+   photos: 照片放到 images/placeN/ 下，文件名对应即可
+   ============================================================ */
+const places = [
   {
-    img: "images/ch1.jpg",
-    tag: "CHAPTER 01 / WHERE IT ALL BEGAN",
-    title: "那天的咖啡馆，还藏着三个秘密。",
-    desc: "第一次见面的时候，你把咖啡点得比自己还甜。"
+    name:"合肥",
+    date:"2026.05",
+    lat:31.8206, lng:117.2272,
+    desc:"五月在安徽合肥的一段回忆。",
+    photos:["images/place1/1.jpg","images/place1/2.jpg","images/place1/3.jpg"]
   },
   {
-    img: "images/ch2.jpg",
-    tag: "CHAPTER 02 / WANDER",
-    title: "我们踩着黄昏，慢慢走。",
-    desc: "风把所有琐碎烦恼，都留在街道尽头。"
+    name:"川西 · 甘孜",
+    date:"2026.07",
+    lat:30.0515, lng:101.9628,
+    desc:"七月出发，先到川西甘孜，高原的风和景色。",
+    photos:["images/place2/1.jpg","images/place2/2.jpg","images/place2/3.jpg"]
   },
   {
-    img: "images/ch3.jpg",
-    tag: "CHAPTER 03 / MEMORY",
-    title: "这些碎片，拼凑成我们。",
-    desc: "不用急着奔赴终点，此刻已经足够珍贵。"
+    name:"成都",
+    date:"2026.07",
+    lat:30.5728, lng:104.0668,
+    desc:"从川西下来，途经成都。",
+    photos:["images/place3/1.jpg","images/place3/2.jpg","images/place3/3.jpg"]
+  },
+  {
+    name:"西安",
+    date:"2026.07",
+    lat:34.3416, lng:108.9398,
+    desc:"一路向北，来到西安。",
+    photos:["images/place4/1.jpg","images/place4/2.jpg","images/place4/3.jpg"]
+  },
+  {
+    name:"徐州",
+    date:"2026.07",
+    lat:34.2058, lng:117.2839,
+    desc:"途经徐州。",
+    photos:["images/place5/1.jpg","images/place5/2.jpg","images/place5/3.jpg"]
+  },
+  {
+    name:"扬州",
+    date:"2026.07",
+    lat:32.3942, lng:119.4127,
+    desc:"下一站，扬州。",
+    photos:["images/place6/1.jpg","images/place6/2.jpg","images/place6/3.jpg"]
+  },
+  {
+    name:"南京",
+    date:"2026.07",
+    lat:32.0603, lng:118.7969,
+    desc:"这趟旅程的最后一站，南京。",
+    photos:["images/place7/1.jpg","images/place7/2.jpg","images/place7/3.jpg"]
   }
 ];
-// ==========================================
 
-const cover = document.getElementById('cover');
-const wrapper = document.getElementById('wrapper');
-const enterBtn = document.getElementById('enterBtn');
-const mainImg = document.getElementById('mainImg');
-const tagDom = document.getElementById('tag');
-const titleDom = document.getElementById('title');
-const descDom = document.getElementById('desc');
-const prevBtn = document.getElementById('prevBtn');
-const nextBtn = document.getElementById('nextBtn');
-const dotsBox = document.getElementById('dotsBox');
+/* 全景中心与缩放（覆盖整条路线） */
+const HOME = { center:[32.5,113.0], zoom:5 };
 
-let current = 0;
+/* ---------- 初始化地图 ---------- */
+const map = L.map('map',{zoomControl:true, attributionControl:false})
+  .setView(HOME.center, HOME.zoom);
 
-// 生成圆点指示器
-function renderDots(){
-  dotsBox.innerHTML = "";
-  chapters.forEach((_,i)=>{
-    const d = document.createElement('div');
-    d.className = 'dot' + (i===current ? ' active':'');
-    d.onclick = ()=>go(i);
-    dotsBox.appendChild(d);
-  })
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19})
+  .addTo(map);
+
+const pinIcon = L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[16,16],iconAnchor:[8,8]});
+
+places.forEach((p,i)=>{
+  const marker = L.marker([p.lat,p.lng],{icon:pinIcon}).addTo(map);
+  marker.bindTooltip(p.name,{direction:'top',offset:[0,-10]});
+  marker.on('click',()=>openPlace(i));
+});
+
+/* ---------- 面板逻辑 ---------- */
+const panel = document.getElementById('panel');
+const gallery = document.getElementById('gallery');
+
+function openPlace(i){
+  const p = places[i];
+  document.body.classList.add('mode-photo');
+  map.flyTo([p.lat,p.lng],11,{duration:1.2});
+
+  document.getElementById('pKicker').textContent = "PLACE 0" + (i+1);
+  document.getElementById('pTitle').textContent = p.name;
+  document.getElementById('pDate').textContent = p.date;
+  document.getElementById('pDesc').textContent = p.desc;
+
+  gallery.innerHTML = "";
+  p.photos.forEach((src,idx)=>{
+    const item = document.createElement('div');
+    item.className = 'gallery-item';
+    item.style.animationDelay = (idx*0.08)+'s';
+    const img = document.createElement('img');
+    img.src = src; img.alt = p.name;
+    img.onerror = ()=>{item.style.display='none';};
+    item.appendChild(img);
+    gallery.appendChild(item);
+  });
+  gallery.scrollTop = 0;
 }
 
-// 切换章节
-function go(idx){
-  current = idx;
-  const c = chapters[current];
-  mainImg.src = c.img;
-  tagDom.innerText = c.tag;
-  titleDom.innerText = c.title;
-  descDom.innerText = c.desc;
-  renderDots();
-}
+document.getElementById('backBtn').onclick = ()=>{
+  document.body.classList.remove('mode-photo');
+  map.flyTo(HOME.center, HOME.zoom,{duration:1});
+};
 
-// 鼠标视差联动
-document.addEventListener('mousemove',(e)=>{
-  const x = e.clientX - window.innerWidth/2;
-  const y = e.clientY - window.innerHeight/2;
-  const tx = x * 0.03;
-  const ty = y * 0.03;
-  mainImg.style.setProperty('--tx', tx + 'px');
-  mainImg.style.setProperty('--ty', ty + 'px');
-})
-
-// 进入按钮
-enterBtn.onclick = ()=>{
-  cover.classList.add('hidden');
-  wrapper.classList.add('show');
-  go(0);
-}
-
-prevBtn.onclick = ()=>{
-  current = (current -1 + chapters.length) % chapters.length;
-  go(current);
-}
-nextBtn.onclick = ()=>{
-  current = (current +1) % chapters.length;
-  go(current);
-}
-// 键盘左右翻页
-document.onkeydown = (e)=>{
-  if(!wrapper.classList.contains('show')) return;
-  if(e.key==='ArrowLeft') prevBtn.click();
-  if(e.key==='ArrowRight') nextBtn.click();
-}
-renderDots();
+window.addEventListener('resize',()=>map.invalidateSize());
 </script>
 </body>
 </html>
