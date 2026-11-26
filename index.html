@@ -30,6 +30,12 @@
   .map-title .brand{font-size:13px;letter-spacing:.35em;color:var(--ink);}
   .map-title .sub{font-size:12px;letter-spacing:.2em;color:var(--soft);margin-top:6px;}
 
+  .loading-tip{
+    position:absolute;top:80px;left:36px;z-index:600;
+    background:#ffffffdd;padding:8px 12px;border-radius:6px;
+    font-size:13px;color:var(--ink);
+  }
+
   .pin{
     background:var(--accent);border:3px solid #fff;border-radius:50%;
     width:24px;height:24px;box-shadow:0 5px 16px rgba(150,70,90,.4);
@@ -76,6 +82,7 @@
     <div class="brand">OUR PLACES</div>
     <div class="sub">点开一颗心，看看那里的回忆</div>
   </div>
+  <div class="loading-tip" id="loadingTip">地图加载中...</div>
 
   <aside class="panel" id="panel">
     <header class="panel-head">
@@ -91,8 +98,8 @@
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
-   adcode: 行政区划代码（拉城市边界，无需 key）
-   range : 边界加载失败时的兜底圆圈半径（米）
+   地点数据：边界由在线公开接口实时拉取，无需上传附属文件
+   adcode 对应城市；range 为接口失败时的兜底圆圈半径（米）
    ============================================================ */
 const places = [
   { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
@@ -124,11 +131,12 @@ const GEO = "https://geo.datav.aliyun.com/areas_v3/bound";
 const map = L.map('map',{zoomControl:true, attributionControl:false})
   .setView(HOME.center, HOME.zoom);
 
+const loadingTip = document.getElementById('loadingTip');
 let hoverLayer = null, highlightLayer = null;
 const geoCache = {};
 let current = -1, hoverToken = 0;
 
-/* 分省粉色阶（浅 → 深），相邻省错开填色 */
+/* 分省粉色阶（浅 → 深），按 adcode 哈希错开填色 */
 const PINK = ['#f7d9df','#f3c8d1','#eeb6c2','#e9a5b4'];
 function hashAdcode(code){ let s=String(code); let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h; }
 
@@ -137,14 +145,22 @@ function provinceStyle(f){
   return { fillColor:c, fillOpacity:.9, color:'#d99aad', weight:1.2 };
 }
 
-/* ---------- 加载分省矢量底图（full = 35 个省级面） ---------- */
+/* ---------- 在线分省矢量底图（full = 35 个省级面） ---------- */
 async function loadProvince(){
   try{
+    loadingTip.innerText = '正在请求省界数据...';
     const res = await fetch(`${GEO}/100000_full.json`);
+    if(!res.ok) throw new Error('省界接口返回异常');
     const data = await res.json();
+    const total = data.features.length;
+    let loaded = 0;
+    loadingTip.innerText = `省份加载：0 / ${total}`;
+
     L.geoJSON(data,{
       style:provinceStyle,
       onEachFeature:(f, layer)=>{
+        loaded++;
+        loadingTip.innerText = `省份加载：${loaded} / ${total}`;
         layer.on('mouseover',()=>{
           layer.setStyle({fillColor:'#e08ba0', fillOpacity:.95});
           layer.bringToFront();
@@ -152,13 +168,21 @@ async function loadProvince(){
         layer.on('mouseout',()=>{ layer.setStyle(provinceStyle(f)); });
       }
     }).addTo(map);
-  }catch(e){ console.warn('省面加载失败', e); }
+    loadingTip.innerText = '✅ 地图加载完成';
+    setTimeout(()=>loadingTip.style.display='none',1200);
+  }catch(e){
+    console.error(e);
+    loadingTip.innerText = '❌ 省界加载失败（网络受限），仅显示点位';
+    loadingTip.style.color='#b84444';
+  }
 }
 loadProvince();
 
+/* ---------- 在线城市边界（带缓存） ---------- */
 async function getGeo(adcode){
   if(geoCache[adcode]) return geoCache[adcode];
   const res = await fetch(`${GEO}/${adcode}.json`);
+  if(!res.ok) throw new Error('城市边界缺失');
   const data = await res.json();
   geoCache[adcode] = data;
   return data;
