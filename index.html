@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>我们的旅行回忆</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- async 异步加载，不再阻塞页面渲染 -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" async></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" async></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}
 body{overflow:hidden;height:100vh}
@@ -35,16 +36,12 @@ body{overflow:hidden;height:100vh}
 
 <script>
 const SUPABASE_URL = "https://vwxiepjgpgrallligab.supabase.co";
-// 👉这里粘贴你的 sb_publishable_ 开头key
+// 👉替换成你的 sb_publishable_ 开头的key
 const SUPABASE_ANON_KEY = "sb_publishable_mDgxnr8vboC3gmSyuCmyUw_eU0S9W-R";
 
 let supabase = null;
-try {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} catch (err) {
-  console.warn("Supabase初始化失败：", err);
-  supabase = null;
-}
+let map = null;
+let highlightLayer = null;
 
 const sites = [
   {name:"安徽合肥",date:"2026年5月",lat:31.86,lng:117.28,region:"合肥市"},
@@ -56,38 +53,72 @@ const sites = [
   {name:"南京",date:"2026年7月",lat:32.06,lng:118.78,region:"南京市"},
 ];
 
-const map = L.map('map',{zoomControl:false}).setView([32,110],4.2);
-// 【回到你最初的Carto浅色风格，使用旧免key地址】
-L.tileLayer('https://{s}.cartodb.com/light_all/{z}/{x}/{y}.png',{
-  attribution:'&copy; CartoDB',
-  maxZoom:12
-}).addTo(map);
+// 【强制兜底：5秒一定关闭loading，不管资源有没有加载完】
+const loadingTimer = setTimeout(()=>{
+  const el = document.getElementById('loading');
+  if(el) el.style.display = 'none';
+}, 5000);
 
-let highlightLayer = L.geoJSON(null,{
-  style(){return {fillColor:'#ffd6e0',fillOpacity:0.45,color:'#f2a2b8',weight:1}}
-}).addTo(map);
 
-sites.forEach(site=>{
-  const iconDiv = L.divIcon({
-    className:'heart-marker',
-    html:`<div class="heart-icon">♥</div>`,
-    iconSize:[32,32],iconAnchor:[16,16]
+function initMap(){
+  if(!window.L) return;
+  clearTimeout(loadingTimer);
+  document.getElementById('loading').style.display = 'none';
+
+  map = L.map('map',{zoomControl:false}).setView([32,110],4.2);
+  // 你原来的 Carto 瓦片地址
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; CartoDB',
+    maxZoom:12
+  }).addTo(map);
+
+  highlightLayer = L.geoJSON(null,{
+    style(){return {fillColor:'#ffd6e0',fillOpacity:0.45,color:'#f2a2b8',weight:1}}
+  }).addTo(map);
+
+  sites.forEach(site=>{
+    const iconDiv = L.divIcon({
+      className:'heart-marker',
+      html:`<div class="heart-icon">♥</div>`,
+      iconSize:[32,32],iconAnchor:[16,16]
+    })
+    const m = L.marker([site.lat,site.lng],{icon:iconDiv}).addTo(map);
+    m.on('click',()=>openSite(site));
   })
-  const m = L.marker([site.lat,site.lng],{icon:iconDiv}).addTo(map);
-  m.on('click',()=>openSite(site));
-})
 
-function hideLoading(){
-  document.getElementById('loading').style.display='none';
+  // 初始化supabase
+  if(window.supabase){
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (err) {
+      console.warn("Supabase初始化失败：", err);
+      supabase = null;
+    }
+  }
 }
-window.onload = hideLoading;
-setTimeout(hideLoading, 3000);
+
+// 等待leaflet加载完成再初始化地图
+window.addEventListener('load', ()=>{
+  if(window.L){
+    initMap();
+  }else{
+    // 轮询等待leaflet
+    const poll = setInterval(()=>{
+      if(window.L){
+        clearInterval(poll);
+        initMap();
+      }
+    }, 300);
+  }
+})
 
 
 async function openSite(site){
+  if(!map) return;
   document.getElementById('loading').style.display='flex';
   map.flyTo([site.lat,site.lng],7,{duration:0.7});
   highlightLayer.clearLayers();
+  // 行政区边界容错，超时直接跳过
   fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${site.region}_full.json`)
   .then(res=>res.ok ? res.json() : null)
   .then(geo=>{
@@ -106,7 +137,7 @@ async function openSite(site){
   }
   renderPhotos(site, photoData);
   document.getElementById('panel').classList.add('active');
-  hideLoading();
+  document.getElementById('loading').style.display='none';
 }
 
 function renderPhotos(site,photoArr){
@@ -127,7 +158,7 @@ function renderPhotos(site,photoArr){
 }
 function closePanel(){
   document.getElementById('panel').classList.remove('active');
-  highlightLayer.clearLayers();
+  if(highlightLayer) highlightLayer.clearLayers();
 }
 </script>
 </body>
