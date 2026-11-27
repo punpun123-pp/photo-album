@@ -3,393 +3,129 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Our Places · 回忆地图相册</title>
-<link rel="stylesheet" href="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css">
+<title>我们的旅行回忆</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  :root{
-    --bg:#fbeef0; --ink:#4a3540; --soft:#9a7f88;
-    --line:#ecd3d8; --accent:#c9768a; --accent-deep:#8a3f55;
-    --card:#fffafb; --hl-fill:#f6c6cf; --hl-line:#8a3f55;
-  }
-  *{margin:0;padding:0;box-sizing:border-box;}
-  html,body{height:100%;}
-  body{
-    background:var(--bg);color:var(--ink);
-    font-family:"Noto Sans SC",system-ui,-apple-system,sans-serif;overflow:hidden;
-  }
-
-  #map{
-    position:absolute;inset:0;z-index:1;
-    background:linear-gradient(180deg,#fdeef0 0%,#fbe7ea 100%);
-    transition:all .8s cubic-bezier(.22,.8,.3,1);
-  }
-  body.mode-photo #map{width:50%;opacity:.4;}
-  @media(max-width:820px){ body.mode-photo #map{width:100%;height:42%;} }
-
-  .map-title{position:absolute;top:28px;left:36px;z-index:500;pointer-events:none;}
-  .map-title .brand{font-size:13px;letter-spacing:.35em;color:var(--ink);}
-  .map-title .sub{font-size:12px;letter-spacing:.2em;color:var(--soft);margin-top:6px;}
-
-  .loading-tip{
-    position:absolute;top:80px;left:36px;z-index:600;
-    background:#ffffffdd;padding:8px 12px;border-radius:6px;
-    font-size:13px;color:var(--ink);
-  }
-
-  .pin{
-    background:var(--accent);border:3px solid #fff;border-radius:50%;
-    width:24px;height:24px;box-shadow:0 5px 16px rgba(150,70,90,.4);
-    cursor:pointer;transition:transform .2s ease,background .2s ease;
-  }
-  .pin::after{
-    content:"♡";position:absolute;inset:0;display:flex;align-items:center;
-    justify-content:center;font-size:14px;color:#fff;
-  }
-  .pin.hover{background:var(--accent-deep);transform:scale(1.25);}
-
-  .panel{
-    position:absolute;top:0;right:0;height:100%;width:50%;z-index:10;
-    background:var(--card);border-left:1px solid var(--line);
-    transform:translateX(100%);opacity:0;
-    transition:transform .8s cubic-bezier(.22,.8,.3,1),opacity .8s ease;
-    display:flex;flex-direction:column;
-  }
-  body.mode-photo .panel{transform:translateX(0);opacity:1;}
-  @media(max-width:820px){ .panel{width:100%;height:58%;top:42%;} }
-
-  .panel-head{padding:28px 32px 20px;border-bottom:1px solid var(--line);}
-  .back-btn{background:none;border:none;cursor:pointer;color:var(--soft);font-size:13px;letter-spacing:.15em;font-family:inherit;margin-bottom:14px;}
-  .back-btn:hover{color:var(--ink);}
-  .panel-head .kicker{font-size:12px;letter-spacing:.3em;color:var(--accent);margin-bottom:10px;}
-  .panel-head h2{font-size:24px;font-weight:600;line-height:1.4;}
-  .panel-head .date{font-size:13px;color:var(--soft);margin-top:8px;}
-  .panel-head .desc{font-size:14px;color:var(--soft);line-height:1.8;margin-top:12px;font-weight:300;}
-
-  .gallery{flex:1;overflow-y:auto;padding:24px 32px 40px;column-count:2;column-gap:16px;}
-  @media(max-width:480px){.gallery{column-count:1;}}
-
-  .gallery-item{
-    break-inside:avoid;margin-bottom:16px;border-radius:8px;overflow:hidden;
-    background:#fbeef0;animation:fadeUp .6s ease both;
-    transition:transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .35s ease;
-  }
-  .gallery-item:hover{
-    transform:translateY(-5px) scale(1.03);
-    box-shadow:0 14px 30px rgba(150,70,90,.25);
-    z-index:2;position:relative;
-  }
-  .gallery-item img{width:100%;display:block;}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
-
-  .comment-wrap{
-    padding:12px 12px 14px;
-    max-height:0;overflow:hidden;
-    opacity:0;transform:translateY(8px);
-    transition:max-height .35s ease, opacity .3s ease, transform .3s ease;
-    background:#fff;
-  }
-  .gallery-item:hover .comment-wrap,
-  .comment-wrap:focus-within{
-    max-height:420px;opacity:1;transform:translateY(0);
-  }
-  .waline-container{
-    --waline-theme-color:var(--accent);
-    --waline-active-color:var(--accent-deep);
-  }
-  .waline-container .wl-comment,
-  .waline-container .wl-input-wrapper{font-size:12.5px;}
-  .waline-container .wl-login{display:none !important;}
-
-  .gallery::-webkit-scrollbar{width:6px;}
-  .gallery::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}
+body{overflow:hidden;height:100vh}
+#map{position:absolute;left:0;top:0;width:100%;height:100%;z-index:1}
+/* 相册侧边面板 */
+#panel{position:absolute;right:-420px;top:0;width:400px;height:100vh;background:#fff8fb;z-index:2;transition:right 0.7s ease;overflow-y:auto;padding:24px}
+#panel.active{right:0}
+.panel-title{font-size:22px;font-weight:600;color:#c86b85;margin-bottom:12px}
+.panel-date{color:#888;font-size:14px;margin-bottom:20px;border-bottom:1px solid #f2d7df;padding-bottom:12px}
+.waterfall{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.waterfall img{width:100%;border-radius:10px;object-fit:cover;background:#eee}
+.back-btn{margin-top:20px;padding:9px 16px;border:none;background:#e88ea4;color:white;border-radius:8px;cursor:pointer}
+/* 爱心marker样式 */
+.heart-icon{font-size:28px;transition:transform 0.2s,color 0.2s;color:#ff7b9c}
+.heart-icon:hover{transform:scale(1.25);color:#d6486b}
+/* 加载提示 */
+#loading{position:absolute;inset:0;background:rgba(255,255,255,0.7);z-index:10;display:flex;align-items:center;justify-content:center;color:#c86b85;font-size:18px}
 </style>
 </head>
 <body>
-
-  <div id="map"></div>
-
-  <div class="map-title">
-    <div class="brand">OUR PLACES</div>
-    <div class="sub">点开一颗心，看看属于我们的回忆</div>
-  </div>
-  <div class="loading-tip" id="loadingTip">地图加载中...</div>
-
-  <aside class="panel" id="panel">
-    <header class="panel-head">
-      <button class="back-btn" id="backBtn">← 返回地图</button>
-      <div class="kicker" id="pKicker"></div>
-      <h2 id="pTitle"></h2>
-      <div class="date" id="pDate"></div>
-      <p class="desc" id="pDesc"></p>
-    </header>
-    <div class="gallery" id="gallery"></div>
-  </aside>
-
-<script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- 用 module 正确导入 Waline，挂到全局；普通 script 标签无法加载 ESM -->
-<script type="module">
-  import { init as walineInit } from 'https://unpkg.com/@waline/client@v3/dist/waline.js';
-  window.__walineInit = walineInit;
-</script>
+<div id="loading">加载中...</div>
+<div id="map"></div>
+<div id="panel">
+  <h2 class="panel-title" id="siteName"></h2>
+  <div class="panel-date" id="siteDate"></div>
+  <div class="waterfall" id="photoList"></div>
+  <button class="back-btn" onclick="closePanel()">返回地图</button>
+</div>
 
 <script>
-const places = [
-  { name:"合肥",     date:"2026.05", lat:31.8206, lng:117.2272, adcode:"340100", range:28000,
-    desc:"五月在安徽合肥的一段回忆。",
-    photos:["images/place1/1.jpg","images/place1/2.jpg","images/place1/3.jpg"] },
-  { name:"川西 · 甘孜", date:"2026.07", lat:30.0515, lng:101.9628, adcode:"513300", range:60000,
-    desc:"七月出发，先到川西甘孜，高原的风和景色。",
-    photos:["images/place2/1.jpg","images/place2/2.jpg","images/place2/3.jpg"] },
-  { name:"成都",     date:"2026.07", lat:30.5728, lng:104.0668, adcode:"510100", range:32000,
-    desc:"从川西下来，途经成都。",
-    photos:["images/place3/1.jpg","images/place3/2.jpg","images/place3/3.jpg"] },
-  { name:"西安",     date:"2026.07", lat:34.3416, lng:108.9398, adcode:"610100", range:32000,
-    desc:"一路向北，来到西安。",
-    photos:["images/place4/1.jpg","images/place4/2.jpg","images/place4/3.jpg"] },
-  { name:"徐州",     date:"2026.07", lat:34.2058, lng:117.2839, adcode:"320300", range:26000,
-    desc:"途经徐州。",
-    photos:["images/place5/1.jpg","images/place5/2.jpg","images/place5/3.jpg"] },
-  { name:"扬州",     date:"2026.07", lat:32.3942, lng:119.4127, adcode:"321000", range:22000,
-    desc:"下一站，扬州。",
-    photos:["images/place6/1.jpg","images/place6/2.jpg","images/place6/3.jpg"] },
-  { name:"南京",     date:"2026.07", lat:32.0603, lng:118.7969, adcode:"320100", range:28000,
-    desc:"这趟旅程的最后一站，南京。",
-    photos:["images/place7/1.jpg","images/place7/2.jpg","images/place7/3.jpg"] }
+// ==========【在这里填入你的supabase信息】==========
+const SUPABASE_URL = "https://vwxiepjgpgrallligab.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mDgxnr8vboC3gmSyuCmyUw_eU0S9W-R";
+// =================================================
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// 地点数据
+const sites = [
+  {name:"安徽合肥",date:"2026年5月",lat:31.86,lng:117.28,region:"合肥市"},
+  {name:"川西（甘孜）",date:"2026年7月",lat:30.05,lng:100.32,region:"甘孜州"},
+  {name:"成都",date:"2026年7月",lat:30.67,lng:104.07,region:"成都市"},
+  {name:"西安",date:"2026年7月",lat:34.27,lng:108.95,region:"西安市"},
+  {name:"徐州",date:"2026年7月",lat:34.22,lng:117.20,region:"徐州市"},
+  {name:"扬州",date:"2026年7月",lat:32.39,lng:119.42,region:"扬州市"},
+  {name:"南京",date:"2026年7月",lat:32.06,lng:118.78,region:"南京市"},
 ];
 
-const HOME = { center:[32.5,113.0], zoom:5 };
+// 卡通浅色底图（简洁OSM，路网弱化）
+const map = L.map('map',{zoomControl:false}).setView([32,110],4.2);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; CartoDB',
+  maxZoom:12
+}).addTo(map);
 
-const PROV_URLS = [
-  "https://fastly.jsdelivr.net/gh/Supeset/China-GeoData@main/geojson/china_province_full.geojson",
-  "https://raw.githubusercontent.com/Supeset/China-GeoData/main/geojson/china_province_full.geojson"
-];
-const CITY_URLS = [
-  "https://fastly.jsdelivr.net/gh/Supeset/China-GeoData@main/geojson/china_province_city_full.geojson",
-  "https://raw.githubusercontent.com/Supeset/China-GeoData/main/geojson/china_province_city_full.geojson"
-];
+// 行政区高亮图层容器
+let highlightLayer = L.geoJSON(null,{
+  style(){return {fillColor:'#ffd6e0',fillOpacity:0.45,color:'#f2a2b8',weight:1}}
+}).addTo(map);
 
-const map = L.map('map',{zoomControl:true, attributionControl:false})
-  .setView(HOME.center, HOME.zoom);
+// 爱心标记
+const markers = [];
+sites.forEach(site=>{
+  const iconDiv = L.divIcon({
+    className:'heart-marker',
+    html:`<div class="heart-icon">♥</div>`,
+    iconSize:[32,32],iconAnchor:[16,16]
+  })
+  const m = L.marker([site.lat,site.lng],{icon:iconDiv}).addTo(map);
+  m.on('click',()=>openSite(site));
+  markers.push(m);
+})
 
-const loadingTip = document.getElementById('loadingTip');
-let visitedLayer = null;
-let hoverLayer = null, highlightLayer = null;
-let cityIndex = null;
-let cityLoading = null;
-let current = -1, hoverToken = 0;
-
-const PINK = ['#f7d9df','#f3c8d1','#eeb6c2','#e9a5b4'];
-function hashAdcode(code){
-  let s=String(code); let h=0;
-  for(const c of s) h=(h*31+c.charCodeAt(0))>>>0;
-  return h;
-}
-function provinceStyle(f){
-  const c = PINK[hashAdcode(f.properties.adcode) % PINK.length];
-  return { fillColor:c, fillOpacity:.9, color:'#d99aad', weight:1.2 };
-}
-const visitedStyle = { fillColor:'#dd8fa3', fillOpacity:.72, color:'#c9768a', weight:1.2 };
-
-async function fetchGeo(urls){
-  let lastErr = null;
-  for(const u of urls){
-    try{
-      const r = await fetch(u);
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return await r.json();
-    }catch(e){ lastErr = e; }
-  }
-  throw lastErr;
-}
-
-async function loadProvince(){
+// 打开点位，地图平移+高亮+相册滑入
+async function openSite(site){
+  document.getElementById('loading').style.display='flex';
+  // 地图移动到左侧视野
+  map.flyTo([site.lat,site.lng],7,{duration:0.7});
+  // 清空旧高亮
+  highlightLayer.clearLayers();
+  // 尝试加载行政区边界（网络不稳就自动降级，不卡死页面）
   try{
-    loadingTip.innerText = '正在请求省界数据...';
-    const data = await fetchGeo(PROV_URLS);
-    const total = data.features.length;
-    let loaded = 0;
-    loadingTip.innerText = `省份加载：0 / ${total}`;
-    L.geoJSON(data,{
-      style:provinceStyle,
-      onEachFeature:(f, layer)=>{
-        loaded++;
-        loadingTip.innerText = `省份加载：${loaded} / ${total}`;
-        layer.on('mouseover',()=>{
-          layer.setStyle({fillColor:'#e08ba0', fillOpacity:.95});
-          layer.bringToFront();
-        });
-        layer.on('mouseout',()=>{ layer.setStyle(provinceStyle(f)); });
-      }
-    }).addTo(map);
-    loadingTip.innerText = '✅ 地图加载完成';
-    setTimeout(()=>loadingTip.style.display='none',1200);
-  }catch(e){
-    console.error(e);
-    loadingTip.innerText = '❌ 省界加载失败（网络受限），仅显示点位';
-    loadingTip.style.color='#b84444';
-  }
-}
-loadProvince();
-
-async function loadCities(){
-  if(cityIndex) return cityIndex;
-  if(cityLoading) return cityLoading;
-  cityLoading = fetchGeo(CITY_URLS)
-    .then(data=>{
-      cityIndex = {};
-      data.features.forEach(f=>{ cityIndex[String(f.properties.adcode)] = f; });
-      markVisited();
-      return cityIndex;
-    })
-    .catch(e=>{ console.warn('城市边界加载失败', e); cityIndex = null; return null; });
-  return cityLoading;
-}
-loadCities();
-
-function markVisited(){
-  if(!cityIndex) return;
-  const features = places.map(p=>cityIndex[p.adcode]).filter(Boolean);
-  if(!features.length) return;
-  visitedLayer = L.geoJSON({ type:"FeatureCollection", features },{ style:visitedStyle }).addTo(map);
-}
-
-async function getCityFeature(adcode){
-  await loadCities();
-  if(cityIndex && cityIndex[adcode]) return { type:"FeatureCollection", features:[cityIndex[adcode]] };
-  return null;
-}
-
-const hoverStyle  = { color:'#8a3f55', weight:2,   fillColor:'#f6c6cf', fillOpacity:.5 };
-const activeStyle = { color:'#8a3f55', weight:2.5, fillColor:'#f6c6cf', fillOpacity:.45 };
-
-function removeLayer(l){ if(l){ map.removeLayer(l); l=null; } }
-
-async function previewPlace(i){
-  if(current===i) return;
-  const p = places[i];
-  const token = ++hoverToken;
-  const geo = await getCityFeature(p.adcode);
-  if(token!==hoverToken) return;
-  removeLayer(hoverLayer);
-  if(geo) hoverLayer = L.geoJSON(geo,{style:hoverStyle}).addTo(map);
-  else hoverLayer = L.circle([p.lat,p.lng],{radius:p.range,...hoverStyle,dashArray:'4 4'}).addTo(map);
-}
-function clearPreview(){ hoverToken++; removeLayer(hoverLayer); }
-
-async function highlightPlace(i){
-  const p = places[i];
-  removeLayer(highlightLayer);
-  const geo = await getCityFeature(p.adcode);
-  if(geo) highlightLayer = L.geoJSON(geo,{style:activeStyle}).addTo(map);
-  else highlightLayer = L.circle([p.lat,p.lng],{
-    radius:p.range, color:'#8a3f55', weight:2.5,
-    fillColor:'#f6c6cf', fillOpacity:.45, dashArray:'4 4'
-  }).addTo(map);
-}
-
-const pinIcon = L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[24,24],iconAnchor:[12,12]});
-places.forEach((p,i)=>{
-  const marker = L.marker([p.lat,p.lng],{icon:pinIcon}).addTo(map);
-  marker.bindTooltip(p.name,{direction:'top',offset:[0,-12]});
-  marker.on('mouseover',()=>{
-    const el=marker.getElement(); if(el) el.classList.add('hover');
-    previewPlace(i);
-  });
-  marker.on('mouseout',()=>{
-    const el=marker.getElement(); if(el) el.classList.remove('hover');
-    if(current!==i) clearPreview();
-  });
-  marker.on('click',()=>openPlace(i));
-});
-
-/* ================= Waline 匿名版配置 ================= */
-const WALINE_SERVER = "https://waline-vercel-maa8.vercel.app";
-const walineInstances = new Map();
-
-function destroyAllWaline(){
-  walineInstances.forEach(ins=>{
-    if(ins && ins.destroy) ins.destroy();
-  });
-  walineInstances.clear();
-}
-
-function buildCard(src, placeName, idx){
-  const pathKey = `/memory-map/${placeName}-photo-${idx}`;
-  const item = document.createElement('div');
-  item.className = 'gallery-item';
-
-  const img = document.createElement('img');
-  img.src = src; img.alt = placeName;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'comment-wrap';
-  const walineDom = document.createElement('div');
-  walineDom.className = 'waline-container';
-  wrap.appendChild(walineDom);
-
-  // 先把图片和容器插进页面，保证照片不会被评论组件连累
-  item.appendChild(img);
-  item.appendChild(wrap);
-
-  // 再初始化评论；失败也只影响评论区，不影响照片
-  if(window.__walineInit){
-    try{
-      const ins = window.__walineInit({
-        el: walineDom,
-        serverURL: WALINE_SERVER,
-        path: pathKey,
-        placeholder: '写下属于我们的回忆✨',
-        meta: ['nick','mail'],
-        requiredMeta: ['nick'],
-        pageview: false,
-        dark: 'auto'
-      });
-      walineInstances.set(pathKey, ins);
-    }catch(e){
-      console.error('Waline 初始化失败：', e);
+    const res = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${site.region}_full.json`)
+    if(res.ok){
+      const geo = await res.json();
+      highlightLayer.addData(geo);
     }
+  }catch(e){console.log('边界加载失败，跳过行政区高亮')}
+
+  // 读取supabase里面这个地点的照片
+  const {data} = await supabase.from('photos').select('url').eq('site_name',site.name);
+  renderPhotos(site,data||[]);
+  document.getElementById('panel').classList.add('active');
+  document.getElementById('loading').style.display='none';
+}
+
+function renderPhotos(site,photoArr){
+  document.getElementById('siteName').innerText = site.name;
+  document.getElementById('siteDate').innerText = site.date;
+  const wrap = document.getElementById('photoList');
+  wrap.innerHTML = '';
+  if(photoArr.length===0){
+    wrap.innerHTML = '<p style="grid-column:1/-1;color:#999">暂未上传照片，可以去supabase storage上传</p>'
+    return;
   }
-  return item;
+  photoArr.forEach(p=>{
+    const img = document.createElement('img');
+    img.src = p.url;
+    img.loading="lazy";
+    wrap.appendChild(img);
+  })
 }
-
-async function openPlace(i){
-  destroyAllWaline();
-
-  const p = places[i];
-  current = i;
-  clearPreview();
-  document.body.classList.add('mode-photo');
-  map.flyTo([p.lat,p.lng], 9, {duration:1.2});
-  await highlightPlace(i);
-
-  document.getElementById('pKicker').textContent = "PLACE 0" + (i+1);
-  document.getElementById('pTitle').textContent = p.name;
-  document.getElementById('pDate').textContent = p.date;
-  document.getElementById('pDesc').textContent = p.desc;
-
-  gallery.innerHTML = "";
-  p.photos.forEach((src,idx)=>{
-    const card = buildCard(src, p.name, idx);
-    card.style.animationDelay = (idx*0.08)+'s';
-    gallery.appendChild(card);
-  });
-  gallery.scrollTop = 0;
+function closePanel(){
+  document.getElementById('panel').classList.remove('active');
+  highlightLayer.clearLayers();
 }
-
-const gallery = document.getElementById('gallery');
-
-document.getElementById('backBtn').onclick = ()=>{
-  destroyAllWaline();
-  current = -1;
-  document.body.classList.remove('mode-photo');
-  removeLayer(highlightLayer);
-  clearPreview();
-  map.flyTo(HOME.center, HOME.zoom,{duration:1});
-};
-
-window.addEventListener('resize',()=>map.invalidateSize());
+window.onload = ()=>{
+  document.getElementById('loading').style.display='none';
+}
 </script>
 </body>
 </html>
