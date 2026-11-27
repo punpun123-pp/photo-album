@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Our Places · 回忆地图相册</title>
 <link rel="stylesheet" href="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="https://unpkg.com/@waline/client@3.2.0/dist/waline.css">
+<link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css">
 <style>
   :root{
     --bg:#fbeef0; --ink:#4a3540; --soft:#9a7f88;
@@ -127,7 +127,12 @@
   </aside>
 
 <script src="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/@waline/client@3.2.0/dist/waline.js"></script>
+
+<!-- 用 module 正确导入 Waline，挂到全局；普通 script 标签无法加载 ESM -->
+<script type="module">
+  import { init as walineInit } from 'https://unpkg.com/@waline/client@v3/dist/waline.js';
+  window.__walineInit = walineInit;
+</script>
 
 <script>
 const places = [
@@ -306,7 +311,7 @@ const walineInstances = new Map();
 function destroyAllWaline(){
   walineInstances.forEach(ins=>{
     if(ins && ins.destroy) ins.destroy();
-  })
+  });
   walineInstances.clear();
 }
 
@@ -324,20 +329,28 @@ function buildCard(src, placeName, idx){
   walineDom.className = 'waline-container';
   wrap.appendChild(walineDom);
 
-  const ins = Waline.init({
-    el: walineDom,
-    serverURL: WALINE_SERVER,
-    path: pathKey,
-    placeholder: '写下属于我们的回忆✨',
-    meta: ['nick','mail'],
-    requiredMeta: ['nick'],
-    pageview: false,
-    dark: 'auto'
-  });
-  walineInstances.set(pathKey, ins);
-
+  // 先把图片和容器插进页面，保证照片不会被评论组件连累
   item.appendChild(img);
   item.appendChild(wrap);
+
+  // 再初始化评论；失败也只影响评论区，不影响照片
+  if(window.__walineInit){
+    try{
+      const ins = window.__walineInit({
+        el: walineDom,
+        serverURL: WALINE_SERVER,
+        path: pathKey,
+        placeholder: '写下属于我们的回忆✨',
+        meta: ['nick','mail'],
+        requiredMeta: ['nick'],
+        pageview: false,
+        dark: 'auto'
+      });
+      walineInstances.set(pathKey, ins);
+    }catch(e){
+      console.error('Waline 初始化失败：', e);
+    }
+  }
   return item;
 }
 
