@@ -11,7 +11,6 @@
 *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}
 body{overflow:hidden;height:100vh}
 #map{position:absolute;left:0;top:0;width:100%;height:100%;z-index:1}
-/* 相册侧边面板 */
 #panel{position:absolute;right:-420px;top:0;width:400px;height:100vh;background:#fff8fb;z-index:2;transition:right 0.7s ease;overflow-y:auto;padding:24px}
 #panel.active{right:0}
 .panel-title{font-size:22px;font-weight:600;color:#c86b85;margin-bottom:12px}
@@ -19,10 +18,8 @@ body{overflow:hidden;height:100vh}
 .waterfall{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .waterfall img{width:100%;border-radius:10px;object-fit:cover;background:#eee}
 .back-btn{margin-top:20px;padding:9px 16px;border:none;background:#e88ea4;color:white;border-radius:8px;cursor:pointer}
-/* 爱心marker样式 */
 .heart-icon{font-size:28px;transition:transform 0.2s,color 0.2s;color:#ff7b9c}
 .heart-icon:hover{transform:scale(1.25);color:#d6486b}
-/* 加载提示 */
 #loading{position:absolute;inset:0;background:rgba(255,255,255,0.7);z-index:10;display:flex;align-items:center;justify-content:center;color:#c86b85;font-size:18px}
 </style>
 </head>
@@ -37,14 +34,19 @@ body{overflow:hidden;height:100vh}
 </div>
 
 <script>
-// ==========【在这里填入你的supabase信息】==========
 const SUPABASE_URL = "https://vwxiepjgpgrallligab.supabase.co";
+// 👉这里粘贴你的 sb_publishable_ 开头key
 const SUPABASE_ANON_KEY = "sb_publishable_mDgxnr8vboC3gmSyuCmyUw_eU0S9W-R";
-// =================================================
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabase = null;
+// 容错初始化，失败也不阻塞页面
+try {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (err) {
+  console.warn("Supabase初始化失败：", err);
+  supabase = null;
+}
 
-// 地点数据
 const sites = [
   {name:"安徽合肥",date:"2026年5月",lat:31.86,lng:117.28,region:"合肥市"},
   {name:"川西（甘孜）",date:"2026年7月",lat:30.05,lng:100.32,region:"甘孜州"},
@@ -55,20 +57,16 @@ const sites = [
   {name:"南京",date:"2026年7月",lat:32.06,lng:118.78,region:"南京市"},
 ];
 
-// 卡通浅色底图（简洁OSM，路网弱化）
 const map = L.map('map',{zoomControl:false}).setView([32,110],4.2);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
   attribution:'&copy; CartoDB',
   maxZoom:12
 }).addTo(map);
 
-// 行政区高亮图层容器
 let highlightLayer = L.geoJSON(null,{
   style(){return {fillColor:'#ffd6e0',fillOpacity:0.45,color:'#f2a2b8',weight:1}}
 }).addTo(map);
 
-// 爱心标记
-const markers = [];
 sites.forEach(site=>{
   const iconDiv = L.divIcon({
     className:'heart-marker',
@@ -77,30 +75,40 @@ sites.forEach(site=>{
   })
   const m = L.marker([site.lat,site.lng],{icon:iconDiv}).addTo(map);
   m.on('click',()=>openSite(site));
-  markers.push(m);
 })
 
-// 打开点位，地图平移+高亮+相册滑入
+// ✅ 强制3秒后关闭loading兜底，防止卡死
+function hideLoading(){
+  document.getElementById('loading').style.display='none';
+}
+window.onload = hideLoading;
+setTimeout(hideLoading, 3000);
+
+
 async function openSite(site){
   document.getElementById('loading').style.display='flex';
-  // 地图移动到左侧视野
   map.flyTo([site.lat,site.lng],7,{duration:0.7});
-  // 清空旧高亮
   highlightLayer.clearLayers();
-  // 尝试加载行政区边界（网络不稳就自动降级，不卡死页面）
-  try{
-    const res = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${site.region}_full.json`)
-    if(res.ok){
-      const geo = await res.json();
-      highlightLayer.addData(geo);
-    }
-  }catch(e){console.log('边界加载失败，跳过行政区高亮')}
+  // 行政区边界容错，超时直接跳过
+  fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${site.region}_full.json`)
+  .then(res=>res.ok ? res.json() : null)
+  .then(geo=>{
+    if(geo) highlightLayer.addData(geo);
+  })
+  .catch(e=>console.log('边界加载跳过'));
 
-  // 读取supabase里面这个地点的照片
-  const {data} = await supabase.from('photos').select('url').eq('site_name',site.name);
-  renderPhotos(site,data||[]);
+  let photoData = [];
+  if(supabase){
+    try{
+      const {data} = await supabase.from('photos').select('url').eq('site_name',site.name);
+      photoData = data || [];
+    }catch(e){
+      console.log("读取图片失败", e);
+    }
+  }
+  renderPhotos(site, photoData);
   document.getElementById('panel').classList.add('active');
-  document.getElementById('loading').style.display='none';
+  hideLoading();
 }
 
 function renderPhotos(site,photoArr){
@@ -109,7 +117,7 @@ function renderPhotos(site,photoArr){
   const wrap = document.getElementById('photoList');
   wrap.innerHTML = '';
   if(photoArr.length===0){
-    wrap.innerHTML = '<p style="grid-column:1/-1;color:#999">暂未上传照片，可以去supabase storage上传</p>'
+    wrap.innerHTML = '<p style="grid-column:1/-1;color:#999">暂未上传照片</p>'
     return;
   }
   photoArr.forEach(p=>{
@@ -122,9 +130,6 @@ function renderPhotos(site,photoArr){
 function closePanel(){
   document.getElementById('panel').classList.remove('active');
   highlightLayer.clearLayers();
-}
-window.onload = ()=>{
-  document.getElementById('loading').style.display='none';
 }
 </script>
 </body>
