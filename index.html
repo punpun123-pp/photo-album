@@ -99,7 +99,6 @@
   }
   .waline-container .wl-comment,
   .waline-container .wl-input-wrapper{font-size:12.5px;}
-  /* 隐藏登录相关按钮，纯匿名模式 */
   .waline-container .wl-login{display:none !important;}
 
   .gallery::-webkit-scrollbar{width:6px;}
@@ -325,14 +324,13 @@ function buildCard(src, placeName, idx){
   walineDom.className = 'waline-container';
   wrap.appendChild(walineDom);
 
-  // 匿名模式：只要求昵称，无登录入口
   const ins = Waline.init({
     el: walineDom,
     serverURL: WALINE_SERVER,
     path: pathKey,
     placeholder: '写下属于我们的回忆✨',
     meta: ['nick','mail'],
-    requiredMeta: ['nick'], // 只必须填昵称，邮箱可选
+    requiredMeta: ['nick'],
     pageview: false,
     dark: 'auto'
   });
