@@ -3,43 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>地图测试</title>
+<title>我们的旅行回忆</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;overflow:hidden}
-#map{width:100%;height:100%;background:#fff}
-.heart-icon{font-size:28px;color:#ff7b9c}
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}
+body{overflow:hidden;height:100vh}
+#map{position:absolute;left:0;top:0;width:100%;height:100%;z-index:1}
+#panel{position:absolute;right:-420px;top:0;width:400px;height:100vh;background:#fff8fb;z-index:2;transition:right 0.7s ease;overflow-y:auto;padding:24px}
+#panel.active{right:0}
+.panel-title{font-size:22px;font-weight:600;color:#c86b85;margin-bottom:12px}
+.panel-date{color:#888;font-size:14px;margin-bottom:20px;border-bottom:1px solid #f2d7df;padding-bottom:12px}
+.waterfall{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.waterfall img{width:100%;border-radius:10px;object-fit:cover;background:#eee}
+.back-btn{margin-top:20px;padding:9px 16px;border:none;background:#e88ea4;color:white;border-radius:8px;cursor:pointer}
+.heart-icon{font-size:28px;transition:transform 0.2s,color 0.2s;color:#ff7b9c}
+.heart-icon:hover{transform:scale(1.25);color:#d6486b}
+#loading{position:absolute;inset:0;background:rgba(255,255,255,0.7);z-index:10;display:flex;align-items:center;justify-content:center;color:#c86b85;font-size:18px}
 </style>
 </head>
 <body>
+<div id="loading">加载中...</div>
 <div id="map"></div>
+<div id="panel">
+  <h2 class="panel-title" id="siteName"></h2>
+  <div class="panel-date" id="siteDate"></div>
+  <div class="waterfall" id="photoList"></div>
+  <button class="back-btn" onclick="closePanel()">返回地图</button>
+</div>
 
 <script>
-const map = L.map('map',{zoomControl:false}).setView([32,110],4.2);
+const SUPABASE_URL = "https://vwxiepjgpgrallligab.supabase.co";
+// 👉这里粘贴你的 sb_publishable_ 开头key
+const SUPABASE_ANON_KEY = "sb_publishable_mDgxnr8vboC3gmSyuCmyUw_eU0S9W-R";
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+let supabase = null;
+try {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (err) {
+  console.warn("Supabase初始化失败：", err);
+  supabase = null;
+}
+
+const sites = [
+  {name:"安徽合肥",date:"2026年5月",lat:31.86,lng:117.28,region:"合肥市"},
+  {name:"川西（甘孜）",date:"2026年7月",lat:30.05,lng:100.32,region:"甘孜州"},
+  {name:"成都",date:"2026年7月",lat:30.67,lng:104.07,region:"成都市"},
+  {name:"西安",date:"2026年7月",lat:34.27,lng:108.95,region:"西安市"},
+  {name:"徐州",date:"2026年7月",lat:34.22,lng:117.20,region:"徐州市"},
+  {name:"扬州",date:"2026年7月",lat:32.39,lng:119.42,region:"扬州市"},
+  {name:"南京",date:"2026年7月",lat:32.06,lng:118.78,region:"南京市"},
+];
+
+const map = L.map('map',{zoomControl:false}).setView([32,110],4.2);
+// 【回到你最初的Carto浅色风格，使用旧免key地址】
+L.tileLayer('https://{s}.cartodb.com/light_all/{z}/{x}/{y}.png',{
+  attribution:'&copy; CartoDB',
   maxZoom:12
 }).addTo(map);
 
-const sites = [
-  {name:"安徽合肥",lat:31.86,lng:117.28},
-  {name:"成都",lat:30.67,lng:104.07},
-  {name:"西安",lat:34.27,lng:108.95},
-  {name:"南京",lat:32.06,lng:118.78}
-];
+let highlightLayer = L.geoJSON(null,{
+  style(){return {fillColor:'#ffd6e0',fillOpacity:0.45,color:'#f2a2b8',weight:1}}
+}).addTo(map);
 
 sites.forEach(site=>{
-  const icon = L.divIcon({
+  const iconDiv = L.divIcon({
     className:'heart-marker',
     html:`<div class="heart-icon">♥</div>`,
-    iconSize:[32,32],
-    iconAnchor:[16,16]
-  });
+    iconSize:[32,32],iconAnchor:[16,16]
+  })
+  const m = L.marker([site.lat,site.lng],{icon:iconDiv}).addTo(map);
+  m.on('click',()=>openSite(site));
+})
 
-  L.marker([site.lat,site.lng],{icon}).addTo(map);
-});
+function hideLoading(){
+  document.getElementById('loading').style.display='none';
+}
+window.onload = hideLoading;
+setTimeout(hideLoading, 3000);
+
+
+async function openSite(site){
+  document.getElementById('loading').style.display='flex';
+  map.flyTo([site.lat,site.lng],7,{duration:0.7});
+  highlightLayer.clearLayers();
+  fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${site.region}_full.json`)
+  .then(res=>res.ok ? res.json() : null)
+  .then(geo=>{
+    if(geo) highlightLayer.addData(geo);
+  })
+  .catch(e=>console.log('边界加载跳过'));
+
+  let photoData = [];
+  if(supabase){
+    try{
+      const {data} = await supabase.from('photos').select('url').eq('site_name',site.name);
+      photoData = data || [];
+    }catch(e){
+      console.log("读取图片失败", e);
+    }
+  }
+  renderPhotos(site, photoData);
+  document.getElementById('panel').classList.add('active');
+  hideLoading();
+}
+
+function renderPhotos(site,photoArr){
+  document.getElementById('siteName').innerText = site.name;
+  document.getElementById('siteDate').innerText = site.date;
+  const wrap = document.getElementById('photoList');
+  wrap.innerHTML = '';
+  if(photoArr.length===0){
+    wrap.innerHTML = '<p style="grid-column:1/-1;color:#999">暂未上传照片</p>'
+    return;
+  }
+  photoArr.forEach(p=>{
+    const img = document.createElement('img');
+    img.src = p.url;
+    img.loading="lazy";
+    wrap.appendChild(img);
+  })
+}
+function closePanel(){
+  document.getElementById('panel').classList.remove('active');
+  highlightLayer.clearLayers();
+}
 </script>
 </body>
 </html>
