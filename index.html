@@ -318,7 +318,6 @@ function buildCard(src, placeName, idx){
 
   const img = document.createElement('img');
   img.src = src; img.alt = placeName;
-  img.onerror = ()=>{ item.style.display='none'; };
 
   const wrap = document.createElement('div');
   wrap.className = 'comment-wrap';
